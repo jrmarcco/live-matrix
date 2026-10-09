@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>drag-overlay</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: transparent;
+        overflow: hidden;
+        cursor: grabbing;
+        user-select: none;
+      }
+      #ghost {
+        position: fixed;
+        left: 0;
+        top: 0;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid #4f8cff;
+        background: rgba(16, 20, 28, 0.94);
+        color: #e6eaf2;
+        font: 12.5px/1.4 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+        white-space: nowrap;
+        pointer-events: none;
+        display: none;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="ghost">松开以置换窗口 · Esc 取消</div>
+    <script type="module" src="/src/overlay.ts"></script>
+  </body>
+</html>

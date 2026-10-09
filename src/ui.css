@@ -1,0 +1,596 @@
+:root {
+  --bg: #0a0c10;
+  --panel: #10141c;
+  --panel-2: #151a24;
+  --border: #1e2530;
+  --border-2: #2b3444;
+  --accent: #4f8cff;
+  --accent-2: #3a6fd8;
+  --text: #e8ecf4;
+  --dim: #7e8798;
+  --danger: #ef4444;
+  --ok: #22c55e;
+  --bili: #fb7299;
+  --dy: #4fa3ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Segoe UI',
+    system-ui, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* ---------------- 顶部工具栏（无边框窗口拖拽区） ---------------- */
+
+#toolbar {
+  flex: 0 0 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 16px;
+  background: linear-gradient(180deg, #12161f 0%, #0e121a 100%);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+
+#toolbar button,
+#toolbar .chip {
+  -webkit-app-region: no-drag;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-right: auto;
+}
+
+.brand .logo {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #4f8cff, #7c5cff);
+  color: #fff;
+  font-size: 14px;
+}
+
+.brand b {
+  font-size: 15px;
+  letter-spacing: 0.4px;
+}
+
+.brand .sub {
+  color: var(--dim);
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+#loginChips {
+  display: flex;
+  gap: 8px;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--border-2);
+  background: #1a2130;
+}
+
+.chip .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3d4657;
+  transition: background 0.2s;
+}
+
+.chip.on .dot {
+  background: var(--ok);
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.75);
+}
+
+.chip em {
+  font-style: normal;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.chip.on em {
+  color: var(--ok);
+}
+
+.chip.on.bilibili {
+  border-color: rgba(251, 114, 153, 0.4);
+}
+
+.chip.on.douyin {
+  border-color: rgba(79, 163, 255, 0.4);
+}
+
+.count {
+  min-width: 34px;
+  text-align: center;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- 按钮 ---------------- */
+
+.primary {
+  height: 34px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #5590ff, #3d78e0);
+  color: #fff;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+}
+
+.primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.primary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ghost {
+  height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ghost:hover {
+  background: #1a2130;
+}
+
+/* ---------------- 窗口控制（最小化 / 最大化 / 关闭） ----------------
+ * 图标用纯 CSS 绘制，不依赖字体字形，避免任何环境缺字形问题 */
+
+.win-controls {
+  display: flex;
+  align-self: stretch;
+  margin-left: 6px;
+}
+
+.wc {
+  position: relative;
+  width: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.wc i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+}
+
+/* 最小化：一条横线 */
+.ic-min {
+  width: 11px;
+  height: 1.5px;
+  background: var(--dim);
+  transform: translate(-50%, -50%);
+  transition: background 0.15s;
+}
+
+/* 最大化：空心方框 */
+.ic-max {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--dim);
+  border-radius: 1.5px;
+  transform: translate(-50%, -50%);
+  transition: border-color 0.15s, width 0.15s, height 0.15s;
+}
+
+/* 还原状态：两个错位的方框 */
+.ic-max.restore {
+  width: 8px;
+  height: 8px;
+  box-shadow: 3px -3px 0 -1.5px var(--dim), 3px -3px 0 0 var(--dim) inset;
+  border-color: transparent;
+  background: transparent;
+}
+
+.ic-max.restore::after {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--dim);
+  border-radius: 1.5px;
+}
+
+/* 关闭：旋转 45° 的十字 */
+.ic-close {
+  width: 12px;
+  height: 1.5px;
+  background: var(--dim);
+  transform: translate(-50%, -50%) rotate(45deg);
+  transition: background 0.15s;
+}
+
+.ic-close::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 12px;
+  height: 1.5px;
+  background: var(--dim);
+  transform: rotate(90deg);
+  transition: background 0.15s;
+}
+
+.wc:hover {
+  background: #1a2130;
+}
+
+.wc:hover .ic-min,
+.wc:hover .ic-close,
+.wc:hover .ic-close::after {
+  background: var(--text);
+}
+
+.wc:hover .ic-max {
+  border-color: var(--text);
+}
+
+.wc.close:hover {
+  background: #e81123;
+}
+
+.wc.close:hover .ic-close,
+.wc.close:hover .ic-close::after {
+  background: #fff;
+}
+
+/* ---------------- 舞台网格：4×4，主窗口占左上 3×3，副窗口填右侧一列 + 底部一行 ----------------
+ * 窗口为 16:9 时，主窗口(3×3)与每个副窗口(1×1)都近似 16:9。
+ * 副窗口自动填充顺序：右列自上而下 3 格，然后底行自左向右 4 格，共 7 格。 */
+
+#stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+}
+
+.cell {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.cell:hover {
+  border-color: var(--border-2);
+}
+
+.slot-main {
+  grid-column: 1 / span 3;
+  grid-row: 1 / span 3;
+  border-color: #24457a;
+}
+
+.slot-main:hover {
+  border-color: #2f5a9e;
+}
+
+/* ---------------- 窗口头栏 ---------------- */
+
+.cell-head {
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  background: #0e1118;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+}
+
+.cell-head:hover {
+  background: #12161f;
+}
+
+.cell-head .grip {
+  color: #525c6e;
+  font-size: 15px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.cell-head:hover .grip {
+  color: var(--dim);
+}
+
+.cell-head .tag {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  color: #fff;
+}
+
+.tag.bilibili {
+  background: var(--bili);
+}
+
+.tag.douyin {
+  background: var(--dy);
+}
+
+.cell-head .title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #c3cad6;
+  font-size: 12.5px;
+}
+
+.cell-head .mute-badge {
+  flex: 0 0 auto;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.slot-main .mute-badge {
+  color: var(--accent);
+}
+
+.hb {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hb:hover {
+  background: #232b3a;
+  color: #fff;
+}
+
+.hb[data-act='main'] {
+  font-size: 12px;
+  border: 1px solid var(--border);
+}
+
+/* ---------------- 窗口主体（直播画面覆盖于此） ---------------- */
+
+.cell-body {
+  flex: 1 1 auto;
+  position: relative;
+  background: #000;
+}
+
+.cell-body:empty::after {
+  content: '载入中…';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+/* ---------------- 占位格 ---------------- */
+
+.placeholder {
+  border: 1px dashed #232a38;
+  background: transparent;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.placeholder:hover {
+  border-color: var(--accent);
+  background: rgba(79, 140, 255, 0.05);
+}
+
+.ph-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 12.5px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.ph-plus {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px dashed #333d50;
+  font-size: 18px;
+  color: #3d4657;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.placeholder:hover .ph-plus {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------------- 拖拽 ---------------- */
+
+body.dragging,
+body.dragging * {
+  cursor: grabbing !important;
+}
+
+.cell.drop-target {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-color: var(--accent);
+}
+
+/* ---------------- 添加对话框 ---------------- */
+
+.modal-back {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 10, 0.78);
+  z-index: 900;
+}
+
+.modal-back.hidden {
+  display: none;
+}
+
+.modal {
+  width: 470px;
+  max-width: calc(100vw - 48px);
+  padding: 22px;
+  border-radius: 14px;
+  border: 1px solid var(--border-2);
+  background: var(--panel);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.modal h3 {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal label {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.modal input {
+  width: 100%;
+  height: 40px;
+  padding: 0 13px;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13.5px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.modal input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.18);
+}
+
+.hint {
+  margin-top: 9px;
+  color: var(--dim);
+  font-size: 12.5px;
+}
+
+.hint.ok {
+  color: var(--ok);
+}
+
+.hint.warn {
+  color: #f59e0b;
+}
+
+.err {
+  min-height: 18px;
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+.modal .row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    />
+    <link rel="stylesheet" href="/src/ui.css" />
+    <title>LiveMatrix</title>
+  </head>
+  <body>
+    <header id="toolbar">
+      <div class="brand">
+        <span class="logo">◧</span>
+        <b>LiveMatrix</b>
+        <span class="sub">同屏多直播</span>
+      </div>
+      <div id="loginChips"></div>
+      <span id="subCount" class="count">0/7</span>
+      <button id="addBtn" class="primary" type="button">＋ 添加直播</button>
+      <div class="win-controls">
+        <button id="winMin" class="wc" type="button" title="最小化"><i class="ic-min"></i></button>
+        <button id="winMax" class="wc" type="button" title="最大化 / 还原"><i class="ic-max"></i></button>
+        <button id="winClose" class="wc close" type="button" title="关闭"><i class="ic-close"></i></button>
+      </div>
+    </header>
+
+    <main id="stage"></main>
+
+    <div id="modalBack" class="modal-back hidden">
+      <form id="addForm" class="modal">
+        <h3>添加直播窗口</h3>
+        <label for="urlInput">直播地址</label>
+        <input
+          id="urlInput"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          placeholder="例如 https://live.bilibili.com/21452505 或 https://live.douyin.com/745969462470"
+        />
+        <div id="platHint" class="hint">支持：哔哩哔哩直播 · 抖音直播</div>
+        <div id="addErr" class="err"></div>
+        <div class="row">
+          <button type="button" id="cancelBtn" class="ghost">取消</button>
+          <button type="submit" class="primary">添加</button>
+        </div>
+      </form>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

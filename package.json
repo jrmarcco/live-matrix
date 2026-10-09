@@ -1,0 +1,31 @@
+{
+  "name": "live-matrix",
+  "version": "1.0.0",
+  "description": "LiveMatrix — 同屏多开观看不同直播（哔哩哔哩 / 抖音），单主窗口多副窗口，仅主窗口有声",
+  "main": "dist/electron/main.js",
+  "author": "LiveMatrix",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20.10.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.electron.json && vite build",
+    "start": "npm run build && electron .",
+    "dev": "concurrently -k -n vite,electron -c blue,green \"vite\" \"cross-env LM_DEV=1 electron .\"",
+    "smoke": "npm run build && electron . --lm-smoke",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:all": "npm run build && electron-builder --win --mac --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

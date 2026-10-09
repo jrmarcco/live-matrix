@@ -1,0 +1,36 @@
+appId: com.livematrix.app
+productName: LiveMatrix
+copyright: Copyright © 2026 LiveMatrix
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - package.json
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: LiveMatrix-Setup-${version}.${ext}
+  # 跳过 rcedit（exe 图标/版本信息嵌入），使 Linux/CI 上也能免 wine 打包；
+  # 若在 Windows 上打包且提供了 build/icon.ico，可删除此行恢复图标嵌入
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: LiveMatrix
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.entertainment
+  artifactName: LiveMatrix-${version}-${arch}.${ext}
+  identity: null
+dmg:
+  title: LiveMatrix ${version}
