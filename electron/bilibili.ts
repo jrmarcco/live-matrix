@@ -102,7 +102,7 @@ export async function resolveBiliLive(url: string, ses: Session): Promise<Stream
   const play = await biliApi<PlayUrlData>(
     ses,
     `https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo` +
-      `?room_id=${realId}&protocol=0,1&format=0,1,2&codec=0,1&qn=0&platform=web&ptype=8`,
+    `?room_id=${realId}&protocol=0,1&format=0,1,2&codec=0,1&qn=0&platform=web&ptype=8`,
   );
   if (info.live_status !== 1 || play.live_status !== 1) throw new Error('直播间未开播');
   const candidates = pickStreams(play, info.title, realId);

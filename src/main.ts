@@ -128,7 +128,7 @@ function makeMainPlaceholder(): HTMLElement {
   const el = document.createElement('section');
   el.className = 'cell placeholder slot-main';
   el.innerHTML =
-    '<div class="ph-inner"><span class="ph-plus">◧</span><span>主窗口<br>添加第一个直播后在此播放（有声）</span></div>';
+    '<div class="ph-inner"><span class="ph-plus">◧</span><span>主窗口</span></div>';
   el.addEventListener('click', openModal);
   return el;
 }

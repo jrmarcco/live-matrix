@@ -3,7 +3,7 @@ import type { MenuItemConstructorOptions, Session } from 'electron';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
-import { resolveBiliLive } from './bili';
+import { resolveBiliLive } from './bilibili';
 import { attachDouyinSniffer, sniffDouyinLive } from './douyin';
 import { attachEnhancer } from './enhance';
 import { LOGIN_URL, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
@@ -154,7 +154,7 @@ function addViewStream(url: string, platform: Platform): StreamSlot | null {
   attachEnhancer(view.webContents, platform);
   // index 0：插到子视图栈底，保证 UI 层之上按槽位叠放
   win.contentView.addChildView(view, 0);
-  void view.webContents.loadURL(url).catch(() => {});
+  void view.webContents.loadURL(url).catch(() => { });
   views.set(id, { view, url, platform });
   return { id, url, platform, kind: 'view' };
 }
@@ -265,7 +265,7 @@ function openLogin(p: Platform): void {
     loginWindows.delete(p);
     scheduleLoginCheck(p);
   });
-  void lw.loadURL(LOGIN_URL[p]).catch(() => {});
+  void lw.loadURL(LOGIN_URL[p]).catch(() => { });
 }
 
 function waitForDevServer(url: string, timeoutMs = 30000): Promise<void> {

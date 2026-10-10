@@ -19,18 +19,6 @@
 - **无边框简约深色界面**：无系统标题栏与菜单栏，工具栏左侧区域可拖动移动窗口（双击可最大化/还原），右上角为自绘的最小化 / 最大化 / 关闭按钮。
 - **每次启动全新布局**：直播窗口不跨启动保留，重启后回到空白界面重新添加；平台登录状态则会一直保留。
 
-## 技术选型：Electron
-
-在 Tauri 与 Electron 之间选择了 **Electron**，核心理由：
-
-| 需求 | Electron 能力 | Tauri 的局限 |
-| --- | --- | --- |
-| 单窗口静音/有声切换 | `webContents.setAudioMuted()` 跨平台可靠 | 系统 WebView（macOS WKWebView）无统一静音 API |
-| B 站 / 抖音页面兼容 | 内置 Chromium，内核行为与主流浏览器一致 | WKWebView / WebView2 对抖音登录、播放器兼容风险高 |
-| 按平台隔离并持久化登录 | `session.fromPartition('persist:…')` 开箱即用 | 多 WebView 共享 Cookie 存储，隔离不便 |
-
-架构：主进程用一个 `BrowserWindow` 承载 UI 层（网格、对话框、工具栏）。直播格分两种：**直连格**——B站经 `electron/bili.ts` 调用无签名公开接口（`get_info` 换真实房间号 + `getRoomPlayInfo` 拿拉流地址，请求带 `persist:live-bilibili` 分区 Cookie），抖音经 `electron/douyin.ts` 隐藏加载直播页（0×0 视图）从网络层嗅探带 token 的拉流地址后立即销毁页面；渲染层用 mpegts.js（FLV，含 H.265）/ hls.js（HLS）在 `<video>` 里播放，拉流 CDN 的 Referer 校验由主进程 `webRequest.onBeforeSendHeaders` 注入对应平台头解决；**内嵌格（回退）**——独立 `WebContentsView` 叠放在格子上，渲染层把各格坐标经 IPC（`layout:update`）上报 `setBounds` 并附 `isMain` 控制静音。两种格子混排于同一网格，互换/铺满时 DOM 节点整体搬移，播放不中断。直连格的交互（双击互换/铺满、右上角关闭）走 DOM；内嵌格注入 `stream-preload`（隔离世界、捕获阶段）拦截真实双击并在页面内挂关闭按钮。地址对话框打开期间主进程把全部内嵌视图缩为 0（`WebContentsView` 层级高于 UI DOM），关闭后按记忆位置恢复。内嵌格打开后注入平台脚本（`electron/enhance.ts`）自动进入网页全屏并净化界面，播放器容器带 CSS 居中规则保证小格子里画面居中。
-
 ## 环境要求
 
 - 开发：Node.js ≥ 20.10，pnpm ≥ 10（`npm install -g pnpm` 安装）
