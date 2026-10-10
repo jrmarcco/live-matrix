@@ -17,8 +17,7 @@
       <b>巡游天国保安室</b>
     </div>
     <div id="loginChips"></div>
-      <span id="subCount" class="count">0/7</span>
-      <button id="favBtn" class="primary" type="button" title="收藏夹">★ 收藏</button>
+    <button id="favBtn" class="primary" type="button" title="收藏夹">★ 收藏</button>
     <div class="win-controls">
       <button id="winMin" class="wc" type="button" title="最小化"><i class="ic-min"></i></button>
       <button id="winMax" class="wc" type="button" title="最大化 / 还原"><i class="ic-max"></i></button>
@@ -40,32 +39,32 @@
         <button type="button" id="cancelBtn" class="ghost">取消</button>
         <button type="submit" class="primary">添加</button>
       </div>
-      </form>
-    </div>
+    </form>
+  </div>
 
-    <div id="favBack" class="modal-back hidden">
-      <form id="favForm" class="modal">
-        <h3>收藏直播</h3>
-        <label for="favAlias">自定义别名</label>
-        <input id="favAlias" type="text" spellcheck="false" autocomplete="off" maxlength="40" />
-        <div class="row">
-          <button type="button" id="favCancel" class="ghost">取消</button>
-          <button type="submit" class="primary">保存</button>
-        </div>
-      </form>
-    </div>
+  <div id="favBack" class="modal-back hidden">
+    <form id="favForm" class="modal">
+      <h3>收藏直播</h3>
+      <label for="favAlias">自定义别名</label>
+      <input id="favAlias" type="text" spellcheck="false" autocomplete="off" maxlength="40" />
+      <div class="row">
+        <button type="button" id="favCancel" class="ghost">取消</button>
+        <button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </div>
 
-    <div id="favWrap" class="fav-wrap hidden">
-      <div id="favShade" class="fav-shade"></div>
-      <aside id="favPanel" class="fav-panel">
-        <div class="fav-head">
-          <b>收藏夹</b>
-          <button id="favClose" type="button" title="收起">×</button>
-        </div>
-        <div id="favList" class="fav-list"></div>
-        <div class="fav-tip">点击列表项即可添加到窗口；按住条目拖动可调整顺序；直播画面右上角 ☆ 可收藏当前直播间</div>
-      </aside>
-    </div>
+  <div id="favWrap" class="fav-wrap hidden">
+    <div id="favShade" class="fav-shade"></div>
+    <aside id="favPanel" class="fav-panel">
+      <div class="fav-head">
+        <b>收藏夹</b>
+        <button id="favClose" type="button" title="收起">×</button>
+      </div>
+      <div id="favList" class="fav-list"></div>
+      <div class="fav-tip">点击列表项即可添加到窗口；按住条目拖动可调整顺序；直播画面右上角 ☆ 可收藏当前直播间</div>
+    </aside>
+  </div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

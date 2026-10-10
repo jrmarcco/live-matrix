@@ -30,7 +30,6 @@ let focusMode = false; // 双击主窗口进入：主画面铺满舞台，副窗
 const loginState: Record<Platform, boolean> = { bilibili: false, douyin: false };
 
 const stage = document.getElementById('stage')!;
-const subCount = document.getElementById('subCount')!;
 const loginChips = document.getElementById('loginChips')!;
 const winMaxBtn = document.getElementById('winMax') as HTMLButtonElement;
 
@@ -170,7 +169,6 @@ function render(): void {
   for (let i = subs; i < 7; i++) {
     stage.appendChild(makeSubPlaceholder());
   }
-  subCount.textContent = `${subs}/7`;
   // 格子已被移除的播放器随之销毁
   for (const id of [...players.keys()]) {
     if (!stage.querySelector(`.cell[data-id="${id}"]`)) destroyPlayer(id);
