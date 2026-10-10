@@ -433,6 +433,49 @@ function createWindow(): void {
                 document.getElementById('favClose').click();
                 await new Promise((res) => setTimeout(res, 200));
               }
+              // 收藏拖动排序（合成 DragEvent）：把「拖拽A」拖到「拖拽C」之后，应变为 B,C,A
+              const favItemByAlias = (a) => [...document.querySelectorAll('.fav-item')]
+                .find((it) => it.querySelector('.alias').textContent === a);
+              const favAliases = () => [...document.querySelectorAll('.fav-item .alias')].map((e2) => e2.textContent);
+              const dragFavs = [
+                { url: 'https://live.bilibili.com/9001', platform: 'bilibili', alias: '拖拽A' },
+                { url: 'https://live.bilibili.com/9002', platform: 'bilibili', alias: '拖拽B' },
+                { url: 'https://live.douyin.com/9003', platform: 'douyin', alias: '拖拽C' },
+              ];
+              for (const saved of await window.lm.getFavorites()) {
+                if (dragFavs.some((d) => d.url === saved.url)) window.lm.removeFavorite(saved.url);
+              }
+              await new Promise((res) => setTimeout(res, 250));
+              for (const f of dragFavs) window.lm.saveFavorite(f);
+              await new Promise((res) => setTimeout(res, 400));
+              document.getElementById('favBtn').click();
+              await new Promise((res) => setTimeout(res, 250));
+              const sub3 = (list) => ['拖拽A', '拖拽B', '拖拽C'].map((a) => list.indexOf(a));
+              out.favOrderBeforeDrag = sub3(favAliases());
+              const itemA = favItemByAlias('拖拽A');
+              const itemC = favItemByAlias('拖拽C');
+              const dt = new DataTransfer();
+              itemA.dispatchEvent(new DragEvent('dragstart', { bubbles: true, dataTransfer: dt }));
+              const rc = itemC.getBoundingClientRect();
+              itemC.dispatchEvent(new DragEvent('dragover', {
+                bubbles: true, cancelable: true, clientX: rc.left + 5, clientY: rc.bottom - 2, dataTransfer: dt,
+              }));
+              itemA.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
+              await new Promise((res) => setTimeout(res, 400));
+              out.favOrderAfterDrag = sub3(favAliases());
+              out.favOrderPersisted = sub3((await window.lm.getFavorites()).map((f) => f.alias));
+              for (const f of dragFavs) window.lm.removeFavorite(f.url);
+              document.getElementById('favClose').click();
+              await new Promise((res) => setTimeout(res, 250));
+              // 直连格右下角刷新按钮：点击后应显示「刷新中…」并触发重新解析
+              const vCell = document.querySelector('.cell.kind-video[data-id]');
+              const rBtn = vCell ? vCell.querySelector('.cell-refresh') : null;
+              out.videoRefreshBtn = !!rBtn;
+              if (rBtn) {
+                rBtn.click();
+                await new Promise((res) => setTimeout(res, 120));
+                out.videoRefreshState = vCell.querySelector('.v-state').textContent;
+              }
               return out;
             })()`);
             console.log('[live-matrix] E2E ' + JSON.stringify(r));
@@ -484,6 +527,7 @@ function createWindow(): void {
                 bodyClass: document.body ? document.body.className : '',
                 videos: [...document.querySelectorAll('video')].map(rect),
                 closeBtn: !!document.getElementById('lm-close-x'),
+                refreshBtn: !!document.getElementById('lm-refresh-x'),
                 key: [...document.querySelectorAll('#live-player,#playerWraper,#fullscreen-container,#player-ctnr,div[data-e2e="living-container"]')]
                   .slice(0, 5)
                   .map((el) => ({ id: el.id || el.getAttribute('data-e2e') || '', r: rect(el) })),
@@ -495,6 +539,30 @@ function createWindow(): void {
           console.log(
             `[live-matrix] 诊断 view=${id} bounds=${JSON.stringify(e.view.getBounds())} probe=${JSON.stringify(probe)}`,
           );
+        }
+        // view 格页内右下角刷新按钮：点击后应触发整页 reload（navigation type 变为 reload）
+        for (const [id, e] of views) {
+          try {
+            const hasBtn = await withTimeout(
+              e.view.webContents.executeJavaScript(`!!document.getElementById('lm-refresh-x')`),
+              3000,
+            );
+            if (!hasBtn) continue;
+            await e.view.webContents.executeJavaScript(
+              `document.getElementById('lm-refresh-x').click()`,
+            );
+            await new Promise((res) => setTimeout(res, 1500));
+            const navType = await withTimeout(
+              e.view.webContents.executeJavaScript(
+                `(performance.getEntriesByType('navigation')[0] || {}).type || ''`,
+              ),
+              3000,
+            );
+            console.log(`[live-matrix] view刷新按钮 id=${id} navType=${navType}`);
+            break;
+          } catch {
+            /* 页面可能尚未就绪 */
+          }
         }
         try {
           const img = await win?.webContents.capturePage();
@@ -615,6 +683,16 @@ function registerIpc(): void {
     }
   });
 
+  // 直播页面内右下角刷新按钮：按发送者定位并重载对应视图
+  ipcMain.on('stream:refresh-self', (e) => {
+    for (const entry of views.values()) {
+      if (entry.view.webContents.id === e.sender.id) {
+        entry.view.webContents.reload();
+        return;
+      }
+    }
+  });
+
   // 直播页面内右上角关闭按钮：按发送者定位并关闭对应视图
   ipcMain.on('stream:close-self', (e) => {
     for (const [id, entry] of views) {
@@ -664,6 +742,25 @@ function registerIpc(): void {
     const i = list.findIndex((x) => x.url === url);
     if (i < 0) return;
     list.splice(i, 1);
+    saveFavorites();
+    pushFavorites();
+  });
+  // 收藏排序（渲染层拖动后按 url 全量上报）：未知/遗漏条目沉底，防并发丢数据
+  ipcMain.on('favorites:reorder', (_e, urls: unknown) => {
+    if (!Array.isArray(urls) || !urls.every((u) => typeof u === 'string')) return;
+    const list = getFavorites();
+    const byUrl = new Map(list.map((f) => [f.url, f]));
+    const next: Favorite[] = [];
+    for (const u of urls) {
+      const f = byUrl.get(u);
+      if (f && !next.includes(f)) {
+        next.push(f);
+        byUrl.delete(u);
+      }
+    }
+    for (const f of byUrl.values()) next.push(f);
+    if (next.every((f, i) => list[i] === f)) return;
+    list.splice(0, list.length, ...next);
     saveFavorites();
     pushFavorites();
   });

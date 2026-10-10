@@ -44,6 +44,8 @@ const api = {
   getFavorites: () => ipcRenderer.invoke('favorites:get') as Promise<Favorite[]>,
   saveFavorite: (f: FavoriteSaveRequest) => void ipcRenderer.send('favorites:save', f),
   removeFavorite: (url: string) => void ipcRenderer.send('favorites:remove', url),
+  /** 拖动排序后按 url 顺序全量上报，主进程重排并持久化 */
+  reorderFavorites: (urls: string[]) => void ipcRenderer.send('favorites:reorder', urls),
   onFavoritesUpdate: (cb: (v: FavoritesUpdateEvent) => void) => {
     ipcRenderer.on('favorites:update', (_e, v) => cb(v));
   },

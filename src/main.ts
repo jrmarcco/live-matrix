@@ -96,12 +96,13 @@ function makeStreamCell(c: Cell): HTMLElement {
   el.className = c.kind === 'video' ? 'cell kind-video' : 'cell';
   el.dataset.id = String(c.id);
   if (c.kind === 'video') {
-    // 直连格子：视频元素 + 状态角标 + 收藏/关闭按钮（画面是我们自己的 DOM）
+    // 直连格子：视频元素 + 状态角标 + 收藏/刷新/关闭按钮（画面是我们自己的 DOM）
     el.innerHTML = `
       <div class="cell-body">
         <video playsinline></video>
         <span class="v-state"></span>
         <button class="cell-fav" type="button" title="收藏此直播">☆</button>
+        <button class="cell-refresh" type="button" title="刷新直播">↻</button>
         <button class="cell-close" type="button" title="关闭此直播窗口">×</button>
       </div>`;
     el.querySelector('.cell-close')!.addEventListener('click', () => {
@@ -109,6 +110,18 @@ function makeStreamCell(c: Cell): HTMLElement {
       if (i >= 0) removeCell(i);
     });
     el.querySelector('.cell-fav')!.addEventListener('click', () => openFavModal(c));
+    el.querySelector('.cell-refresh')!.addEventListener('click', () => {
+      const cc = cells.find((x) => x.id === c.id);
+      if (!cc || cc.kind !== 'video') return;
+      // 清掉待触发的自动刷新，避免手动刷新后又被重复解析一次
+      const t = refreshTimers.get(c.id);
+      if (t) {
+        window.clearTimeout(t);
+        refreshTimers.delete(c.id);
+      }
+      setState(c.id, '刷新中…');
+      window.lm.refreshStream(c.id);
+    });
     attachPlayer(el, c);
   } else {
     el.innerHTML = '<div class="cell-body"></div>';
@@ -437,6 +450,9 @@ document.getElementById('favBtn')!.addEventListener('click', () => {
 document.getElementById('favClose')!.addEventListener('click', closeFavPanel);
 document.getElementById('favShade')!.addEventListener('click', closeFavPanel);
 
+/** 正在拖动的收藏项 url（null = 未拖动） */
+let dragFavUrl: string | null = null;
+
 function renderFavList(): void {
   favList.innerHTML = '';
   if (!favorites.length) {
@@ -449,10 +465,12 @@ function renderFavList(): void {
   for (const f of favorites) {
     const item = document.createElement('div');
     item.className = 'fav-item';
+    item.draggable = true;
+    item.dataset.url = f.url;
     const tag = f.platform === 'bilibili' ? 'B站' : '抖音';
-    item.innerHTML = `<span class="tag ${f.platform}">${tag}</span><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
+    item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><span class="tag ${f.platform}">${tag}</span><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
     (item.querySelector('.alias') as HTMLElement).textContent = f.alias;
-    item.title = `点击添加：${tag} · ${f.alias}`;
+    item.title = `点击添加：${tag} · ${f.alias}（拖动可调整顺序）`;
     item.addEventListener('click', (e) => {
       if ((e.target as HTMLElement).closest('.fav-del')) {
         window.lm.removeFavorite(f.url);
@@ -460,8 +478,48 @@ function renderFavList(): void {
       }
       void addFavoriteToStage(f);
     });
+    item.addEventListener('dragstart', (e) => {
+      dragFavUrl = f.url;
+      item.classList.add('dragging');
+      e.dataTransfer!.effectAllowed = 'move';
+      e.dataTransfer!.setData('text/plain', f.url);
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      if (dragFavUrl) persistFavOrder();
+      dragFavUrl = null;
+    });
     favList.appendChild(item);
   }
+}
+
+// 拖动经过其他条目时实时移动 DOM（半透明随行），松手后统一持久化
+favList.addEventListener('dragover', (e) => {
+  if (!dragFavUrl) return;
+  const dragging = favList.querySelector<HTMLElement>('.fav-item.dragging');
+  if (!dragging) return;
+  e.preventDefault();
+  const overItem = (e.target as HTMLElement).closest?.('.fav-item') as HTMLElement | null;
+  if (!overItem || overItem === dragging) {
+    // 列表末尾空白区 → 拖到最后一项之后；条目间隙太小，忽略避免跳动
+    const last = [...favList.querySelectorAll<HTMLElement>('.fav-item:not(.dragging)')].pop();
+    if (!overItem && last && e.clientY > last.getBoundingClientRect().bottom) {
+      favList.appendChild(dragging);
+    }
+    return;
+  }
+  const r = overItem.getBoundingClientRect();
+  if (e.clientY > r.top + r.height / 2) overItem.after(dragging);
+  else overItem.before(dragging);
+});
+
+/** 按 DOM 顺序上报新排序；顺序未变则不落盘 */
+function persistFavOrder(): void {
+  const urls = [...favList.querySelectorAll<HTMLElement>('.fav-item')]
+    .map((el) => el.dataset.url)
+    .filter((u): u is string => !!u);
+  const changed = urls.some((u, i) => favorites[i]?.url !== u) || urls.length !== favorites.length;
+  if (changed) window.lm.reorderFavorites(urls);
 }
 
 async function addFavoriteToStage(f: Favorite): Promise<void> {

@@ -392,9 +392,10 @@ button {
   display: none;
 }
 
-/* 直连格子的关闭按钮（DOM 层，与页内注入按钮同款样式） */
+/* 直连格子的右上角按钮 + 右下角刷新按钮（DOM 层，与页内注入按钮同款样式） */
 .cell-close,
-.cell-fav {
+.cell-fav,
+.cell-refresh {
   position: absolute;
   top: 8px;
   width: 30px;
@@ -422,12 +423,21 @@ button {
   right: 46px;
 }
 
+.cell-refresh {
+  top: auto;
+  bottom: 8px;
+  right: 8px;
+  font-size: 18px;
+}
+
 .cell-close:hover,
-.cell-fav:hover {
+.cell-fav:hover,
+.cell-refresh:hover {
   opacity: 1;
 }
 
-.cell-fav:hover {
+.cell-fav:hover,
+.cell-refresh:hover {
   background: rgba(60, 90, 160, 0.85);
 }
 
@@ -520,6 +530,24 @@ button {
 .fav-item:hover {
   border-color: var(--accent);
   background: #1a2130;
+}
+
+/* 拖动排序：手柄提示 + 拖动中的条目半透明虚线框 */
+.fav-item .fav-grip {
+  flex: 0 0 auto;
+  color: #3d4657;
+  font-size: 14px;
+  cursor: grab;
+}
+
+.fav-item:hover .fav-grip {
+  color: var(--dim);
+}
+
+.fav-item.dragging {
+  opacity: 0.45;
+  border-color: var(--accent);
+  border-style: dashed;
 }
 
 .fav-item .tag {

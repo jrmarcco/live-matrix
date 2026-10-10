@@ -5,18 +5,22 @@ import { ipcRenderer } from 'electron';
  * 直播画面（WebContentsView）层级高于 UI 页面 DOM，交互只能做进页面里：
  * 1. 捕获阶段拦截真实双击，阻止站点自身的"双击全屏"等响应，上报主进程
  *    完成「副窗口与主窗口互换 / 主窗口铺满」；
- * 2. 在页面右上角挂 关闭（×）与 收藏（☆）两个按钮（UI 层已无窗口头栏）。
+ * 2. 在页面右上角挂 关闭（×）与 收藏（☆）两个按钮，右下角挂 刷新（↻）按钮
+ *    （UI 层已无窗口头栏）。
  * isTrusted 过滤：忽略脚本合成的双击（如进入网页全屏时注入的合成事件）。
  */
 
 const CLOSE_BTN_ID = 'lm-close-x';
 const FAV_BTN_ID = 'lm-fav-x';
+const REFRESH_BTN_ID = 'lm-refresh-x';
+const STYLE_ID = 'lm-overlay-style';
 
 function mountButtons(): void {
-  if (document.getElementById(CLOSE_BTN_ID)) return;
-  const style = document.createElement('style');
-  style.textContent = `
-#${CLOSE_BTN_ID}, #${FAV_BTN_ID} {
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+#${CLOSE_BTN_ID}, #${FAV_BTN_ID}, #${REFRESH_BTN_ID} {
   position: fixed !important;
   top: 8px !important;
   width: 30px !important;
@@ -36,12 +40,15 @@ function mountButtons(): void {
 }
 #${CLOSE_BTN_ID} { right: 8px !important; font-size: 19px !important; }
 #${FAV_BTN_ID} { right: 46px !important; }
-#${CLOSE_BTN_ID}:hover, #${FAV_BTN_ID}:hover {
+#${REFRESH_BTN_ID} { top: auto !important; bottom: 8px !important; right: 8px !important; font-size: 18px !important; }
+#${CLOSE_BTN_ID}:hover, #${FAV_BTN_ID}:hover, #${REFRESH_BTN_ID}:hover {
   background: rgba(60, 90, 160, 0.85) !important;
   opacity: 1 !important;
 }
 #${CLOSE_BTN_ID}:hover { background: rgba(200, 40, 40, 0.85) !important; }
 `;
+    document.head.appendChild(style);
+  }
   const close = document.createElement('button');
   close.id = CLOSE_BTN_ID;
   close.type = 'button';
@@ -60,9 +67,18 @@ function mountButtons(): void {
     e.stopImmediatePropagation();
     ipcRenderer.send('stream:favorite');
   });
-  document.head.appendChild(style);
-  document.body.appendChild(close);
-  document.body.appendChild(fav);
+  const refresh = document.createElement('button');
+  refresh.id = REFRESH_BTN_ID;
+  refresh.type = 'button';
+  refresh.title = '刷新直播';
+  refresh.textContent = '↻';
+  refresh.addEventListener('click', (e) => {
+    e.stopImmediatePropagation();
+    ipcRenderer.send('stream:refresh-self');
+  });
+  if (!document.getElementById(CLOSE_BTN_ID)) document.body.appendChild(close);
+  if (!document.getElementById(FAV_BTN_ID)) document.body.appendChild(fav);
+  if (!document.getElementById(REFRESH_BTN_ID)) document.body.appendChild(refresh);
 }
 
 if (document.body) {
@@ -72,7 +88,13 @@ if (document.body) {
 }
 // 站点 SPA 跳转可能清理 DOM，定期确保按钮仍在
 setInterval(() => {
-  if (!document.getElementById(CLOSE_BTN_ID)) mountButtons();
+  if (
+    !document.getElementById(CLOSE_BTN_ID) ||
+    !document.getElementById(FAV_BTN_ID) ||
+    !document.getElementById(REFRESH_BTN_ID)
+  ) {
+    mountButtons();
+  }
 }, 2000);
 
 document.addEventListener(
@@ -80,7 +102,7 @@ document.addEventListener(
   (e) => {
     if (!e.isTrusted) return;
     const id = (e.target as Element | null)?.id;
-    if (id === CLOSE_BTN_ID || id === FAV_BTN_ID) return;
+    if (id === CLOSE_BTN_ID || id === FAV_BTN_ID || id === REFRESH_BTN_ID) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     ipcRenderer.send('stream:dblclick');
