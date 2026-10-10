@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  Favorite,
+  FavoritesUpdateEvent,
+  FavoriteSaveRequest,
   InitPayload,
   LayoutItem,
   LoginStatus,
@@ -7,6 +10,7 @@ import type {
   StreamDeadEvent,
   StreamDblClickEvent,
   StreamErrorEvent,
+  StreamFavoriteEvent,
   StreamMediaEvent,
   StreamSlot,
   StreamTitleEvent,
@@ -36,6 +40,14 @@ const api = {
     ipcRenderer.on('win:maximized', (_e, v) => cb(v));
   },
 
+  /** 收藏夹（跨启动持久化） */
+  getFavorites: () => ipcRenderer.invoke('favorites:get') as Promise<Favorite[]>,
+  saveFavorite: (f: FavoriteSaveRequest) => void ipcRenderer.send('favorites:save', f),
+  removeFavorite: (url: string) => void ipcRenderer.send('favorites:remove', url),
+  onFavoritesUpdate: (cb: (v: FavoritesUpdateEvent) => void) => {
+    ipcRenderer.on('favorites:update', (_e, v) => cb(v));
+  },
+
   openLogin: (platform: Platform) => void ipcRenderer.send('login:open', platform),
   logout: (platform: Platform) => ipcRenderer.invoke('login:logout', platform) as Promise<boolean>,
   checkLogin: (platform: Platform) => ipcRenderer.invoke('login:check', platform) as Promise<boolean>,
@@ -62,6 +74,10 @@ const api = {
   /** 直连流地址刷新（主进程重新解析后下发） */
   onStreamMedia: (cb: (v: StreamMediaEvent) => void) => {
     ipcRenderer.on('stream:media', (_e, v) => cb(v));
+  },
+  /** 内嵌格页内星标按钮点击（收藏该直播） */
+  onStreamFavorite: (cb: (v: StreamFavoriteEvent) => void) => {
+    ipcRenderer.on('stream:favorite', (_e, v) => cb(v));
   },
 };
 

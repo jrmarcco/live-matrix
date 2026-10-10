@@ -2,6 +2,7 @@ import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 import { detectPlatform, PLATFORM_LABEL, PLATFORMS } from '../electron/platforms';
 import type {
+  Favorite,
   InitPayload,
   LayoutItem,
   Platform,
@@ -29,7 +30,6 @@ let focusMode = false; // 双击主窗口进入：主画面铺满舞台，副窗
 const loginState: Record<Platform, boolean> = { bilibili: false, douyin: false };
 
 const stage = document.getElementById('stage')!;
-const addBtn = document.getElementById('addBtn') as HTMLButtonElement;
 const subCount = document.getElementById('subCount')!;
 const loginChips = document.getElementById('loginChips')!;
 const winMaxBtn = document.getElementById('winMax') as HTMLButtonElement;
@@ -96,17 +96,19 @@ function makeStreamCell(c: Cell): HTMLElement {
   el.className = c.kind === 'video' ? 'cell kind-video' : 'cell';
   el.dataset.id = String(c.id);
   if (c.kind === 'video') {
-    // 直连格子：视频元素 + 状态角标 + DOM 关闭按钮（画面是我们自己的 DOM）
+    // 直连格子：视频元素 + 状态角标 + 收藏/关闭按钮（画面是我们自己的 DOM）
     el.innerHTML = `
       <div class="cell-body">
         <video playsinline></video>
         <span class="v-state"></span>
+        <button class="cell-fav" type="button" title="收藏此直播">☆</button>
         <button class="cell-close" type="button" title="关闭此直播窗口">×</button>
       </div>`;
     el.querySelector('.cell-close')!.addEventListener('click', () => {
       const i = cells.findIndex((x) => x.id === c.id);
       if (i >= 0) removeCell(i);
     });
+    el.querySelector('.cell-fav')!.addEventListener('click', () => openFavModal(c));
     attachPlayer(el, c);
   } else {
     el.innerHTML = '<div class="cell-body"></div>';
@@ -156,12 +158,11 @@ function render(): void {
     stage.appendChild(makeSubPlaceholder());
   }
   subCount.textContent = `${subs}/7`;
-  addBtn.disabled = cells.length >= MAX_CELLS;
-  addBtn.title = addBtn.disabled ? '副窗口已达上限（7 个）' : '添加直播窗口';
   // 格子已被移除的播放器随之销毁
   for (const id of [...players.keys()]) {
     if (!stage.querySelector(`.cell[data-id="${id}"]`)) destroyPlayer(id);
   }
+  updateFavStates();
   requestAnimationFrame(() => {
     sendLayout();
     syncVideoMute();
@@ -365,7 +366,6 @@ function updateHint(value: string): void {
 }
 
 urlInput.addEventListener('input', () => updateHint(urlInput.value));
-addBtn.addEventListener('click', openModal);
 document.getElementById('cancelBtn')!.addEventListener('click', closeModal);
 modalBack.addEventListener('pointerdown', (e) => {
   if (e.target === modalBack) closeModal();
@@ -373,6 +373,8 @@ modalBack.addEventListener('pointerdown', (e) => {
 window.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (!modalBack.classList.contains('hidden')) closeModal();
+  else if (!favBack.classList.contains('hidden')) closeFavModal();
+  else if (!favWrap.classList.contains('hidden')) closeFavPanel();
   else if (focusMode) setFocusMode(false);
 });
 
@@ -405,6 +407,114 @@ addForm.addEventListener('submit', async (e) => {
   render();
   closeModal();
 });
+
+/* ---------------- 收藏夹 ---------------- */
+
+const favWrap = document.getElementById('favWrap')!;
+const favList = document.getElementById('favList')!;
+const favBack = document.getElementById('favBack')!;
+const favForm = document.getElementById('favForm') as HTMLFormElement;
+const favAlias = document.getElementById('favAlias') as HTMLInputElement;
+
+let favorites: Favorite[] = [];
+let pendingFav: { url: string; platform: Platform } | null = null;
+
+function openFavPanel(): void {
+  favWrap.classList.remove('hidden');
+  // 内嵌直播视图层级高于 DOM，面板期间隐藏（与对话框同机制）
+  window.lm.setModalVisible(true);
+}
+
+function closeFavPanel(): void {
+  favWrap.classList.add('hidden');
+  window.lm.setModalVisible(false);
+}
+
+document.getElementById('favBtn')!.addEventListener('click', () => {
+  if (favWrap.classList.contains('hidden')) openFavPanel();
+  else closeFavPanel();
+});
+document.getElementById('favClose')!.addEventListener('click', closeFavPanel);
+document.getElementById('favShade')!.addEventListener('click', closeFavPanel);
+
+function renderFavList(): void {
+  favList.innerHTML = '';
+  if (!favorites.length) {
+    const empty = document.createElement('div');
+    empty.className = 'fav-empty';
+    empty.textContent = '暂无收藏';
+    favList.appendChild(empty);
+    return;
+  }
+  for (const f of favorites) {
+    const item = document.createElement('div');
+    item.className = 'fav-item';
+    const tag = f.platform === 'bilibili' ? 'B站' : '抖音';
+    item.innerHTML = `<span class="tag ${f.platform}">${tag}</span><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
+    (item.querySelector('.alias') as HTMLElement).textContent = f.alias;
+    item.title = `点击添加：${tag} · ${f.alias}`;
+    item.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('.fav-del')) {
+        window.lm.removeFavorite(f.url);
+        return;
+      }
+      void addFavoriteToStage(f);
+    });
+    favList.appendChild(item);
+  }
+}
+
+async function addFavoriteToStage(f: Favorite): Promise<void> {
+  if (cells.length >= MAX_CELLS) return;
+  const slot = await window.lm.addStream(f.url, f.platform);
+  if (!slot) return;
+  cells.push(slot);
+  if (focusMode) setFocusMode(false);
+  closeFavPanel();
+  render();
+}
+
+function openFavModal(c: Cell): void {
+  pendingFav = { url: c.url, platform: c.platform };
+  const existing = favorites.find((f) => f.url === c.url);
+  favAlias.value = existing ? existing.alias : `收藏${favorites.length + 1}`;
+  closeModal();
+  closeFavPanel();
+  window.lm.setModalVisible(true);
+  favBack.classList.remove('hidden');
+  favAlias.focus();
+  favAlias.select();
+}
+
+function closeFavModal(): void {
+  favBack.classList.add('hidden');
+  pendingFav = null;
+  window.lm.setModalVisible(false);
+}
+
+document.getElementById('favCancel')!.addEventListener('click', closeFavModal);
+favBack.addEventListener('pointerdown', (e) => {
+  if (e.target === favBack) closeFavModal();
+});
+favForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const alias = favAlias.value.trim();
+  if (!alias || !pendingFav) return;
+  window.lm.saveFavorite({ ...pendingFav, alias });
+  closeFavModal();
+});
+
+/** 同步各格星标状态（已收藏 ★ / 未收藏 ☆；内嵌格页内按钮不回显状态） */
+function updateFavStates(): void {
+  stage.querySelectorAll<HTMLElement>('.cell[data-id]').forEach((el) => {
+    const btn = el.querySelector<HTMLElement>('.cell-fav');
+    if (!btn) return;
+    const c = cells.find((x) => x.id === Number(el.dataset.id));
+    const saved = !!c && favorites.some((f) => f.url === c.url);
+    btn.textContent = saved ? '★' : '☆';
+    btn.title = saved ? '已收藏，点击修改别名' : '收藏此直播';
+  });
+}
 
 /* ---------------- 登录状态 ---------------- */
 
@@ -471,9 +581,25 @@ window.lm.onStreamMedia((v: StreamMediaEvent) => {
   const el = stage.querySelector<HTMLElement>(`.cell[data-id="${v.id}"]`);
   if (el) attachPlayer(el, c);
 });
+// 内嵌格页内星标点击 → 弹出别名输入
+window.lm.onStreamFavorite((v) => {
+  const c = cells.find((x) => x.id === v.id);
+  if (c) openFavModal(c);
+});
+// 收藏列表变更（保存/移除后主进程推送全量）
+window.lm.onFavoritesUpdate((v) => {
+  favorites = v.items;
+  renderFavList();
+  updateFavStates();
+});
 
 /* ---------------- 启动 ---------------- */
 
 render();
 renderChips();
+void window.lm.getFavorites().then((items) => {
+  favorites = items;
+  renderFavList();
+  updateFavStates();
+});
 window.lm.ready();

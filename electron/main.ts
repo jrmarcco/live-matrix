@@ -4,9 +4,19 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { resolveBiliLive } from './bili';
+import { attachDouyinSniffer, sniffDouyinLive } from './douyin';
 import { attachEnhancer } from './enhance';
 import { LOGIN_URL, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
-import type { LayoutItem, LoginStatus, Platform, StreamSlot, StreamMedia, ViewRect } from './types';
+import type {
+  Favorite,
+  FavoriteSaveRequest,
+  LayoutItem,
+  LoginStatus,
+  Platform,
+  StreamSlot,
+  StreamMedia,
+  ViewRect,
+} from './types';
 
 /** 1 个主窗口槽位 + 最多 7 个副窗口槽位 */
 const MAX_STREAMS = 8;
@@ -20,8 +30,8 @@ interface StreamEntry {
 let win: BrowserWindow | null = null;
 /** 内嵌页面模式的直播（抖音 / B站直连失败回退） */
 const views = new Map<number, StreamEntry>();
-/** 直连播放模式的直播（B站）：记录页面 URL 以便流过期后重新解析 */
-const videoSlots = new Map<number, { url: string; media: StreamMedia }>();
+/** 直连播放模式的直播（B站 API 解析 / 抖音页面嗅探）：记录原地址以便流过期后重新解析 */
+const videoSlots = new Map<number, { url: string; platform: Platform; media: StreamMedia }>();
 let nextId = 1;
 
 const loginWindows = new Map<Platform, BrowserWindow>();
@@ -77,6 +87,8 @@ function sessionFor(p: Platform): Session {
     // 观看直播不需要任何设备权限，一律拒绝
     ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     ses.cookies.on('changed', () => scheduleLoginCheck(p));
+    // 抖音分区挂常驻拉流观察器（页面嗅探直连用）
+    if (p === 'douyin') attachDouyinSniffer(ses);
   }
   return ses;
 }
@@ -147,20 +159,24 @@ function addViewStream(url: string, platform: Platform): StreamSlot | null {
   return { id, url, platform, kind: 'view' };
 }
 
-/** B站优先走直连（自研播放器），解析失败回退内嵌页面 */
+/** B站走 API 直连、抖音走页面嗅探直连；解析失败回退内嵌页面 */
 async function addStream(url: string, platform: Platform): Promise<StreamSlot | null> {
   if (!win || views.size + videoSlots.size >= MAX_STREAMS) return null;
-  if (platform === 'bilibili') {
-    try {
-      const media = await withTimeout(resolveBiliLive(url, sessionFor('bilibili')), 8000);
-      const id = nextId++;
-      videoSlots.set(id, { url, media });
-      console.log(`[live-matrix] B站直连: 房间${media.roomId} qn=${media.qn} ${media.format}`);
-      return { id, url, platform, kind: 'video', media, title: media.title };
-    } catch (err) {
-      console.warn(`[live-matrix] B站直连解析失败，回退页面模式: ${String(err)}`);
-      // 回落到 addViewStream
+  try {
+    let media: StreamMedia;
+    if (platform === 'bilibili') {
+      media = await withTimeout(resolveBiliLive(url, sessionFor('bilibili')), 8000);
+    } else {
+      media = await withTimeout(sniffDouyinLive(url, sessionFor('douyin'), win), 20000);
     }
+    const id = nextId++;
+    videoSlots.set(id, { url, platform, media });
+    console.log(
+      `[live-matrix] ${platform === 'bilibili' ? 'B站直连' : '抖音嗅探直连'}: 房间${media.roomId ?? url} qn=${media.qn ?? '-'} ${media.format}`,
+    );
+    return { id, url, platform, kind: 'video', media, title: media.title };
+  } catch (err) {
+    console.warn(`[live-matrix] ${platform} 直连解析失败，回退页面模式: ${String(err)}`);
   }
   return addViewStream(url, platform);
 }
@@ -183,6 +199,48 @@ function removeStream(id: number): void {
     return;
   }
   videoSlots.delete(id);
+}
+
+/* ---------------- 收藏夹（跨启动持久化，与窗口会话无关） ---------------- */
+
+function favoritesPath(): string {
+  return path.join(app.getPath('userData'), 'favorites.json');
+}
+
+let favoritesCache: Favorite[] | null = null;
+
+function getFavorites(): Favorite[] {
+  if (!favoritesCache) {
+    favoritesCache = [];
+    try {
+      const raw = JSON.parse(fs.readFileSync(favoritesPath(), 'utf8')) as { items?: Favorite[] };
+      if (Array.isArray(raw.items)) {
+        favoritesCache = raw.items.filter(
+          (f) => f && typeof f.url === 'string' && typeof f.alias === 'string',
+        );
+      }
+    } catch {
+      /* 文件不存在或损坏则从空列表开始 */
+    }
+  }
+  return favoritesCache;
+}
+
+function saveFavorites(): void {
+  try {
+    fs.mkdirSync(path.dirname(favoritesPath()), { recursive: true });
+    fs.writeFileSync(
+      favoritesPath(),
+      JSON.stringify({ version: 1, items: getFavorites() }, null, 2),
+      'utf8',
+    );
+  } catch (err) {
+    console.error('[live-matrix] 保存收藏失败:', err);
+  }
+}
+
+function pushFavorites(): void {
+  win?.webContents.send('favorites:update', { items: getFavorites() });
 }
 
 function openLogin(p: Platform): void {
@@ -247,14 +305,28 @@ function createWindow(): void {
     },
   });
   // 无边框窗口：工具栏为拖拽区，最小化/最大化/关闭由 UI 内自绘按钮触发（见 IPC win:*）
-  // B站 CDN 强制校验 Referer（实测无 Referer 返回 403）：为 UI 会话中的拉流请求注入
-  // Referer 与浏览器 UA（hls.js / mpegts.js 的请求都走 UI 页面会话）
+  // 直连拉流的 CDN 校验（B站实测无 Referer 返回 403）：为 UI 会话中的拉流请求注入
+  // 对应平台的 Referer 与浏览器 UA（hls.js / mpegts.js 的请求都走 UI 页面会话）
+  const BROWSER_UA =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
   win.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ['*://*.bilivideo.com/*', '*://*.bilivideo.cn/*', '*://*.akamaized.net/*'] },
+    {
+      urls: [
+        '*://*.bilivideo.com/*',
+        '*://*.bilivideo.cn/*',
+        '*://*.akamaized.net/*',
+        '*://*.douyincdn.com/*',
+        '*://*.bytecdn.cn/*',
+        '*://*.smtcdns.net/*',
+      ],
+    },
     (details, callback) => {
-      details.requestHeaders['Referer'] = 'https://live.bilibili.com/';
-      details.requestHeaders['User-Agent'] =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+      if (/(^|\.)bilivideo\.(com|cn)$|(^|\.)akamaized\.net$/.test(new URL(details.url).hostname)) {
+        details.requestHeaders['Referer'] = 'https://live.bilibili.com/';
+      } else {
+        details.requestHeaders['Referer'] = 'https://live.douyin.com/';
+      }
+      details.requestHeaders['User-Agent'] = BROWSER_UA;
       callback({ requestHeaders: details.requestHeaders });
     },
   );
@@ -285,12 +357,12 @@ function createWindow(): void {
               const modal = document.getElementById('modalBack');
               out.modalInitiallyHidden = modal.classList.contains('hidden');
               const urls = [
-                'https://live.bilibili.com/1986380859', // 直播中 → 直连播放
-                'https://live.douyin.com/745969462470', // 抖音 → 内嵌页面
+                'https://live.bilibili.com/1986380859', // 直播中 → B站 API 直连
+                'https://live.douyin.com/86730210516', // 抖音开播中 → 页面嗅探直连
                 'https://live.bilibili.com/21452505', // 未开播 → 回退内嵌页面
               ];
               for (const u of urls) {
-                document.getElementById('addBtn').click();
+                document.querySelector('.placeholder').click();
                 await new Promise((res) => setTimeout(res, 150));
                 const input = document.getElementById('urlInput');
                 input.value = u;
@@ -298,12 +370,16 @@ function createWindow(): void {
                 document.getElementById('addForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
                 await new Promise((res) => setTimeout(res, 700));
               }
+              // 抖音嗅探最长约 18s：等全部格子就位再断言
+              for (let i = 0; i < 44 && document.querySelectorAll('.cell[data-id]').length < urls.length; i++) {
+                await new Promise((res) => setTimeout(res, 500));
+              }
               out.streamCellCount = document.querySelectorAll('.cell[data-id]').length;
               out.subCountText = document.getElementById('subCount').textContent;
               out.headBarCount = document.querySelectorAll('.cell-head').length;
               out.videoCellCount = document.querySelectorAll('.cell[data-id] video').length;
               // 播放中再次打开对话框（问题1场景）
-              document.getElementById('addBtn').click();
+              document.querySelector('.placeholder').click();
               await new Promise((res) => setTimeout(res, 300));
               out.modalOpenWithStreams = !modal.classList.contains('hidden');
               document.getElementById('cancelBtn').click();
@@ -325,6 +401,31 @@ function createWindow(): void {
                 await new Promise((res) => setTimeout(res, 600));
                 out.focusOff = !document.getElementById('stage').classList.contains('focus');
                 out.orderAfterAll = cellIds();
+              }
+              // 收藏流程：星标 → 输入别名 → 面板列表 → 点击添加
+              const favBtnCell = document.querySelector('.cell[data-id] .cell-fav');
+              if (favBtnCell) {
+                favBtnCell.click();
+                await new Promise((res) => setTimeout(res, 250));
+                out.favModalShown = !document.getElementById('favBack').classList.contains('hidden');
+                const ai = document.getElementById('favAlias');
+                ai.value = 'E2E收藏';
+                document.getElementById('favForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                await new Promise((res) => setTimeout(res, 500));
+                document.getElementById('favBtn').click();
+                await new Promise((res) => setTimeout(res, 300));
+                out.favPanelShown = !document.getElementById('favWrap').classList.contains('hidden');
+                out.favItemCount = document.querySelectorAll('.fav-item').length;
+                const before = document.querySelectorAll('.cell[data-id]').length;
+                const first = document.querySelector('.fav-item');
+                if (first) {
+                  first.click();
+                  await new Promise((res) => setTimeout(res, 4000)); // B站直连约 1-2s
+                  out.cellCountAfterFavAdd = document.querySelectorAll('.cell[data-id]').length - before;
+                  out.favPanelClosedAfterAdd = document.getElementById('favWrap').classList.contains('hidden');
+                }
+                document.getElementById('favClose').click();
+                await new Promise((res) => setTimeout(res, 200));
               }
               return out;
             })()`);
@@ -434,7 +535,7 @@ function registerIpc(): void {
       ...views.entries(),
     ].map(([id, e]) => ({ id, url: e.url, platform: e.platform, kind: 'view' as const }));
     for (const [id, s] of videoSlots) {
-      slots.push({ id, url: s.url, platform: 'bilibili', kind: 'video', media: s.media });
+      slots.push({ id, url: s.url, platform: s.platform, kind: 'video', media: s.media });
     }
     console.log(`[live-matrix] 渲染层就绪，当前窗口数: ${slots.length}`);
     void Promise.all(
@@ -451,15 +552,19 @@ function registerIpc(): void {
     if (typeof id === 'number') removeStream(id);
   });
 
-  // 直连流过期/断线：重新解析并下发新地址
+  // 直连流过期/断线：重新解析并下发新地址（B站 API / 抖音重新嗅探）
   ipcMain.on('stream:refresh', (_e, id: unknown) => {
     if (typeof id !== 'number') return;
     const slot = videoSlots.get(id);
-    if (!slot) return;
-    void withTimeout(resolveBiliLive(slot.url, sessionFor('bilibili')), 8000)
-      .then((media) => {
+    if (!slot || !win) return;
+    const resolve =
+      slot.platform === 'bilibili'
+        ? resolveBiliLive(slot.url, sessionFor('bilibili')).then((media) => ({ media, url: slot.url }))
+        : sniffDouyinLive(slot.url, sessionFor('douyin'), win).then((media) => ({ media, url: slot.url }));
+    void withTimeout(resolve, 20000)
+      .then(({ media }) => {
         if (!videoSlots.has(id)) return;
-        videoSlots.set(id, { url: slot.url, media });
+        videoSlots.set(id, { url: slot.url, platform: slot.platform, media });
         win?.webContents.send('stream:media', { id, media });
         console.log(`[live-matrix] 直连流已刷新: id=${id} ${media.format}`);
       })
@@ -513,6 +618,48 @@ function registerIpc(): void {
         return;
       }
     }
+  });
+
+  // 内嵌格页内星标按钮：中继给 UI 层弹出别名输入
+  ipcMain.on('stream:favorite', (e) => {
+    if (!win) return;
+    for (const [id, entry] of views) {
+      if (entry.view.webContents.id === e.sender.id) {
+        win.webContents.send('stream:favorite', { id });
+        return;
+      }
+    }
+  });
+
+  // 收藏夹
+  ipcMain.handle('favorites:get', () => getFavorites());
+  ipcMain.on('favorites:save', (_e, v: unknown) => {
+    const f = v as FavoriteSaveRequest;
+    if (
+      !f ||
+      typeof f.url !== 'string' ||
+      typeof f.alias !== 'string' ||
+      !f.alias.trim() ||
+      (f.platform !== 'bilibili' && f.platform !== 'douyin')
+    ) {
+      return;
+    }
+    const alias = f.alias.trim().slice(0, 40);
+    const list = getFavorites();
+    const i = list.findIndex((x) => x.url === f.url);
+    if (i >= 0) list[i] = { url: f.url, platform: f.platform, alias };
+    else list.push({ url: f.url, platform: f.platform, alias });
+    saveFavorites();
+    pushFavorites();
+  });
+  ipcMain.on('favorites:remove', (_e, url: unknown) => {
+    if (typeof url !== 'string') return;
+    const list = getFavorites();
+    const i = list.findIndex((x) => x.url === url);
+    if (i < 0) return;
+    list.splice(i, 1);
+    saveFavorites();
+    pushFavorites();
   });
 
   ipcMain.on('win:min', () => win?.minimize());

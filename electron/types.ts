@@ -76,3 +76,27 @@ export interface StreamMediaEvent {
   id: number;
   media: StreamMedia;
 }
+
+/** 收藏的直播间（userData/favorites.json，跨启动保留） */
+export interface Favorite {
+  url: string;
+  platform: Platform;
+  alias: string;
+}
+
+/** 收藏保存请求（按 url 去重，存在即改名） */
+export interface FavoriteSaveRequest {
+  url: string;
+  platform: Platform;
+  alias: string;
+}
+
+/** 内嵌格页内星标按钮点击（主进程中继回 UI 层） */
+export interface StreamFavoriteEvent {
+  id: number;
+}
+
+/** 收藏列表全量更新事件 */
+export interface FavoritesUpdateEvent {
+  items: Favorite[];
+}
