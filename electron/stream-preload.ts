@@ -15,6 +15,10 @@ const FAV_BTN_ID = 'lm-fav-x';
 const REFRESH_BTN_ID = 'lm-refresh-x';
 const STYLE_ID = 'lm-overlay-style';
 
+/** 与 UI 层同款描边星形图标（收藏动作按钮，避免系统字体 ☆ 字形不一致） */
+const STAR_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
+
 function mountButtons(): void {
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement('style');
@@ -29,22 +33,34 @@ function mountButtons(): void {
   place-items: center !important;
   padding: 0 !important;
   border: none !important;
-  border-radius: 8px !important;
-  background: rgba(8, 10, 16, 0.55) !important;
+  border-radius: 9px !important;
+  background: rgba(10, 13, 20, 0.42) !important;
+  backdrop-filter: blur(6px) !important;
   color: #fff !important;
   font: 400 17px/1 -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif !important;
   cursor: pointer !important;
   z-index: 2147483647 !important;
-  opacity: 0.35 !important;
-  transition: opacity 0.15s, background 0.15s !important;
+  opacity: 0.4 !important;
+  transition: opacity 0.18s, background 0.18s, transform 0.18s !important;
 }
 #${CLOSE_BTN_ID} { right: 8px !important; font-size: 19px !important; }
-#${FAV_BTN_ID} { right: 46px !important; }
+#${FAV_BTN_ID} { left: 8px !important; }
 #${REFRESH_BTN_ID} { top: auto !important; bottom: 8px !important; right: 8px !important; font-size: 18px !important; }
 #${CLOSE_BTN_ID}:hover, #${FAV_BTN_ID}:hover, #${REFRESH_BTN_ID}:hover {
-  background: rgba(60, 90, 160, 0.85) !important;
   opacity: 1 !important;
+  transform: translateY(-1px) !important;
 }
+#${FAV_BTN_ID} svg {
+  width: 16px !important;
+  height: 16px !important;
+  display: block !important;
+  fill: none !important;
+  stroke: currentColor !important;
+  stroke-width: 1.7 !important;
+  stroke-linejoin: round !important;
+}
+#${FAV_BTN_ID}:hover { background: rgba(24, 30, 44, 0.78) !important; }
+#${REFRESH_BTN_ID}:hover { background: rgba(60, 90, 160, 0.85) !important; }
 #${CLOSE_BTN_ID}:hover { background: rgba(200, 40, 40, 0.85) !important; }
 `;
     document.head.appendChild(style);
@@ -62,7 +78,7 @@ function mountButtons(): void {
   fav.id = FAV_BTN_ID;
   fav.type = 'button';
   fav.title = '收藏此直播';
-  fav.textContent = '☆';
+  fav.innerHTML = STAR_SVG;
   fav.addEventListener('click', (e) => {
     e.stopImmediatePropagation();
     ipcRenderer.send('stream:favorite');

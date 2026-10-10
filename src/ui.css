@@ -144,6 +144,36 @@ button {
   border-color: rgba(79, 163, 255, 0.4);
 }
 
+/* 工具栏「收藏」：与登录标签同族的胶囊按钮，金星图标点缀 */
+#favBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#favBtn:hover {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: #1d2130;
+}
+
+#favBtn svg {
+  width: 14px;
+  height: 14px;
+  fill: #fbbf24;
+  stroke: #fbbf24;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
 /* ---------------- 按钮 ---------------- */
 
 .primary {
@@ -414,7 +444,8 @@ button {
   }
 }
 
-/* 直连格子的右上角按钮 + 右下角刷新按钮（DOM 层，与页内注入按钮同款样式） */
+/* 直连格子的右上角按钮 + 右下角刷新按钮（DOM 层，与页内注入按钮同款样式）
+ * 玻璃质感小芯片：平时低透明度隐入画面，悬停提亮并轻微上浮 */
 .cell-close,
 .cell-fav,
 .cell-refresh {
@@ -426,23 +457,21 @@ button {
   place-items: center;
   padding: 0;
   border: none;
-  border-radius: 8px;
-  background: rgba(8, 10, 16, 0.55);
+  border-radius: 9px;
+  background: rgba(10, 13, 20, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   color: #fff;
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
-  opacity: 0.35;
-  transition: opacity 0.15s, background 0.15s;
+  opacity: 0.4;
+  transition: opacity 0.18s, background 0.18s, transform 0.18s, filter 0.18s;
 }
 
 .cell-close {
   right: 8px;
   font-size: 19px;
-}
-
-.cell-fav {
-  right: 46px;
 }
 
 .cell-refresh {
@@ -456,15 +485,49 @@ button {
 .cell-fav:hover,
 .cell-refresh:hover {
   opacity: 1;
+  transform: translateY(-1px);
 }
 
-.cell-fav:hover,
 .cell-refresh:hover {
   background: rgba(60, 90, 160, 0.85);
 }
 
 .cell-close:hover {
   background: rgba(200, 40, 40, 0.85);
+}
+
+/* 收藏星标：置于格子左上角（关闭在右上、刷新在右下），SVG 描边星，
+ * 悬停中性提亮；收藏后（on）实心金星带柔光 */
+.cell-fav {
+  left: 8px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.cell-fav svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+.cell-fav:hover {
+  background: rgba(24, 30, 44, 0.78);
+}
+
+.cell-fav.on {
+  color: #fbbf24;
+  opacity: 0.95;
+}
+
+.cell-fav.on svg {
+  fill: currentColor;
+}
+
+.cell-fav.on:hover {
+  filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.5));
 }
 
 /* ---------------- 收藏夹面板 ---------------- */

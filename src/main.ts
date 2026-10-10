@@ -101,6 +101,10 @@ window.addEventListener('resize', () => {
 
 /* ---------------- 渲染 ---------------- */
 
+/** 星形图标（描边星，收藏态由 CSS 填充为金色实心；避免系统字体的 ☆/★ 字形不一致） */
+const STAR_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
+
 function makeStreamCell(c: StageCell): HTMLElement {
   const el = document.createElement('section');
   el.className = c.kind === 'video' ? 'cell kind-video' : 'cell';
@@ -128,7 +132,7 @@ function makeStreamCell(c: StageCell): HTMLElement {
       <div class="cell-body">
         <video playsinline></video>
         <span class="v-state"></span>
-        <button class="cell-fav" type="button" title="收藏此直播">☆</button>
+        <button class="cell-fav" type="button" title="收藏此直播">${STAR_ICON}</button>
         <button class="cell-refresh" type="button" title="刷新直播">↻</button>
         <button class="cell-close" type="button" title="关闭此直播窗口">×</button>
       </div>`;
@@ -612,14 +616,14 @@ favForm.addEventListener('submit', (e) => {
   closeFavModal();
 });
 
-/** 同步各格星标状态（已收藏 ★ / 未收藏 ☆；内嵌格页内按钮不回显状态） */
+/** 同步各格星标状态（收藏后按钮加 on 类：星形填充为金色；内嵌格页内按钮不回显状态） */
 function updateFavStates(): void {
   stage.querySelectorAll<HTMLElement>('.cell[data-id]').forEach((el) => {
     const btn = el.querySelector<HTMLElement>('.cell-fav');
     if (!btn) return;
     const c = cells.find((x) => x.id === Number(el.dataset.id));
     const saved = !!c && favorites.some((f) => f.url === c.url);
-    btn.textContent = saved ? '★' : '☆';
+    btn.classList.toggle('on', saved);
     btn.title = saved ? '已收藏，点击修改别名' : '收藏此直播';
   });
 }
