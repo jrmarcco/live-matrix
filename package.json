@@ -1,6 +1,6 @@
 {
   "name": "live-matrix",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "LiveMatrix — 同屏多开观看不同直播（哔哩哔哩 / 抖音），单主窗口多副窗口，仅主窗口有声",
   "main": "dist/electron/main.js",
   "author": "LiveMatrix",
