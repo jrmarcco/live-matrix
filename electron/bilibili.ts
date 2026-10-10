@@ -36,6 +36,7 @@ interface PlayUrlData {
           codec?: {
             codec_name: string;
             current_qn: number;
+            accept_qn?: number[];
             base_url: string; // 以 "?" 结尾
             url_info?: { host: string; extra?: string }[];
           }[];
@@ -99,11 +100,22 @@ export async function resolveBiliLive(url: string, ses: Session): Promise<Stream
     `https://api.live.bilibili.com/room/v1/Room/get_info?room_id=${roomId}`,
   );
   const realId = info.room_id || roomId;
-  const play = await biliApi<PlayUrlData>(
-    ses,
-    `https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo` +
-    `?room_id=${realId}&protocol=0,1&format=0,1,2&codec=0,1&qn=0&platform=web&ptype=8`,
+  const fetchPlay = (qn: number) =>
+    biliApi<PlayUrlData>(
+      ses,
+      `https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo` +
+      `?room_id=${realId}&protocol=0,1&format=0,1,2&codec=0,1&qn=${qn}&platform=web&ptype=8`,
+    );
+  let play = await fetchPlay(0);
+  // qn=0 为「默认画质」，实测通常即最高档；若返回档位低于可选最高档，显式用最高档重取
+  const codecs = (play.playurl_info?.playurl?.stream ?? []).flatMap((s) =>
+    (s.format ?? []).flatMap((f) => f.codec ?? []),
   );
+  const accept = Math.max(0, ...codecs.flatMap((c) => c.accept_qn ?? []));
+  const current = Math.max(0, ...codecs.map((c) => c.current_qn ?? 0));
+  if (accept > current) {
+    play = await fetchPlay(accept);
+  }
   if (info.live_status !== 1 || play.live_status !== 1) throw new Error('直播间未开播');
   const candidates = pickStreams(play, info.title, realId);
   if (!candidates.length) throw new Error('接口未返回可用流');

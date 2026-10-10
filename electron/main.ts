@@ -382,6 +382,8 @@ function createWindow(): void {
               out.subCountText = document.getElementById('subCount').textContent;
               out.headBarCount = document.querySelectorAll('.cell-head').length;
               out.videoCellCount = document.querySelectorAll('.cell[data-id] video').length;
+              const dyChip = document.querySelector('.chip.douyin');
+              out.douyinLoginClass = dyChip ? dyChip.className : 'none';
               // 播放中再次打开对话框（问题1场景）
               document.querySelector('.placeholder').click();
               await new Promise((res) => setTimeout(res, 300));
