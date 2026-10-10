@@ -10,7 +10,22 @@ export interface SlotDesc {
 /** 主进程创建成功后带回 id 的窗口槽位 */
 export interface StreamSlot extends SlotDesc {
   id: number;
+  /** video = 自研播放器直连拉流（B站）；view = 内嵌平台页面（抖音 / B站解析失败回退） */
+  kind: 'video' | 'view';
+  media?: StreamMedia;
+  title?: string;
 }
+
+/** 直连播放的拉流信息（B站） */
+export interface StreamMedia {
+  url: string;
+  format: StreamFormat;
+  qn?: number;
+  title?: string;
+  roomId?: number;
+}
+
+export type StreamFormat = 'flv' | 'hls';
 
 export interface ViewRect {
   x: number;
@@ -31,16 +46,10 @@ export interface LoginStatus {
   loggedIn: boolean;
 }
 
-/** 启动恢复时主进程下发给渲染层的初始状态 */
+/** 启动时主进程下发给渲染层的初始状态（不恢复直播窗口，仅登录态） */
 export interface InitPayload {
   slots: StreamSlot[];
   logins: LoginStatus[];
-}
-
-/** 持久化到 userData/config.json 的内容，slots 顺序即槽位顺序（第一个为主窗口） */
-export interface SavedConfig {
-  version: 1;
-  slots: SlotDesc[];
 }
 
 export interface StreamTitleEvent {
@@ -57,8 +66,13 @@ export interface StreamDeadEvent {
   id: number;
 }
 
-/** 拖拽覆盖层回传的鼠标事件（坐标为窗口内容区坐标） */
-export type DragOverlayEvent =
-  | { type: 'move'; x: number; y: number }
-  | { type: 'up'; x: number; y: number }
-  | { type: 'cancel' };
+/** 直播视图内双击（stream-preload 捕获，主进程中继回 UI 层） */
+export interface StreamDblClickEvent {
+  id: number;
+}
+
+/** 直连流地址刷新（流过期/断线后主进程重新解析下发） */
+export interface StreamMediaEvent {
+  id: number;
+  media: StreamMedia;
+}

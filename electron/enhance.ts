@@ -20,7 +20,7 @@ const BILI_JS = `
     return !!(document.body && document.body.classList.contains('player-full-win'));
   }
   function step() {
-    if (isOn()) { window[GUARD] = location.href; return; }
+    if (isOn()) { window[GUARD] = location.href; setTimeout(watch, 2000); return; }
     tries++;
     if (tries > 40) {
       if (document.body) document.body.classList.add('__lmForce');
@@ -42,6 +42,12 @@ const BILI_JS = `
     }
     setTimeout(step, 1000);
   }
+  // 自愈：网页全屏被站点自身操作（如双击）退出后自动恢复
+  function watch() {
+    if (window[GUARD] !== location.href) return;
+    if (!isOn()) { tries = 0; step(); return; }
+    setTimeout(watch, 2000);
+  }
   step();
 })();
 `;
@@ -53,6 +59,12 @@ body.player-full-win #web-player__bottom-bar__container { display: none !importa
 body.player-full-win #fullscreen-container { grid-template-rows: 1fr 0px !important; padding-bottom: 0 !important; }
 body.hide-aside-area #aside-area-vm { display: none !important; }
 body.__lmForce #player-ctnr { position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; }
+/* 小窗口（副窗口）下页面有约 660px 的最小宽度，播放器容器会比视口宽，
+   视频在容器内信箱式居中导致画面偏在视口一侧；用 transform 把容器在视口内
+   居中（容器不超出视口时位移为 0，主窗口零影响） */
+body.player-full-win #fullscreen-container {
+  transform: translate(calc((100vw - 100%) / 2), calc((100vh - 100%) / 2));
+}
 `;
 
 const DOUYIN_JS = `
@@ -84,7 +96,7 @@ const DOUYIN_JS = `
     }
   }
   function step() {
-    if (isOn()) { window[GUARD] = location.href; return; }
+    if (isOn()) { window[GUARD] = location.href; setTimeout(watch, 2000); return; }
     tries++;
     if (tries > 40) {
       if (document.body) document.body.classList.add('__lmForce');
@@ -99,6 +111,12 @@ const DOUYIN_JS = `
     }
     setTimeout(step, 1000);
   }
+  // 自愈：网页全屏/沉浸态被站点自身操作退出后自动恢复
+  function watch() {
+    if (window[GUARD] !== location.href) return;
+    if (!isOn()) { tries = 0; step(); return; }
+    setTimeout(watch, 2000);
+  }
   step();
 })();
 `;
@@ -108,6 +126,11 @@ const DOUYIN_CSS = `
 #LinkMicAnimationLayout, #LinkMicLayout, #LinkMicBackgroundLayout, #EcmoCardLayout,
 #ShortTouchLayout, #WaterMarkLayout, #ServiceCenterLayout { display: none !important; }
 body.__lmForce #playerWraper { position: fixed !important; inset: 0 !important; z-index: 2147483000 !important; width: 100vw !important; height: 100vh !important; }
+/* 小窗口（副窗口）下播放器容器可能比视口宽，视频偏在视口一侧；
+   沉浸态下把播放器在视口内居中（不超出时位移为 0） */
+div[data-e2e="living-container"].__fullScreenOrTheaterOn #playerWraper {
+  transform: translate(calc((100vw - 100%) / 2), calc((100vh - 100%) / 2));
+}
 `;
 
 export const ENHANCE_JS: Record<Platform, string> = { bilibili: BILI_JS, douyin: DOUYIN_JS };

@@ -3,9 +3,10 @@ import type { MenuItemConstructorOptions, Session } from 'electron';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
+import { resolveBiliLive } from './bili';
 import { attachEnhancer } from './enhance';
-import { detectPlatform, LOGIN_URL, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
-import type { LayoutItem, LoginStatus, Platform, SavedConfig, StreamSlot } from './types';
+import { LOGIN_URL, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
+import type { LayoutItem, LoginStatus, Platform, StreamSlot, StreamMedia, ViewRect } from './types';
 
 /** 1 个主窗口槽位 + 最多 7 个副窗口槽位 */
 const MAX_STREAMS = 8;
@@ -17,57 +18,50 @@ interface StreamEntry {
 }
 
 let win: BrowserWindow | null = null;
+/** 内嵌页面模式的直播（抖音 / B站直连失败回退） */
 const views = new Map<number, StreamEntry>();
+/** 直连播放模式的直播（B站）：记录页面 URL 以便流过期后重新解析 */
+const videoSlots = new Map<number, { url: string; media: StreamMedia }>();
 let nextId = 1;
 
 const loginWindows = new Map<Platform, BrowserWindow>();
 const loginCheckTimers = new Map<Platform, NodeJS.Timeout>();
 const preparedSessions = new Set<Platform>();
 
-/** 拖拽期间置顶的透明覆盖层：接管全部鼠标事件并回传给 UI 层做命中测试 */
-let overlayView: WebContentsView | null = null;
-let dragging = false;
-let overlayFailsafe: NodeJS.Timeout | null = null;
-
-function ensureOverlay(): WebContentsView {
-  if (overlayView && !overlayView.webContents.isDestroyed()) return overlayView;
-  overlayView = new WebContentsView({
-    webPreferences: {
-      preload: path.join(__dirname, 'overlay-preload.js'),
-      contextIsolation: true,
-    },
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('请求超时')), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
   });
-  overlayView.setBackgroundColor('#00000000');
-  overlayView.setBounds({ x: 0, y: 0, width: 0, height: 0 });
-  win?.contentView.addChildView(overlayView);
-  void overlayView.webContents.loadFile(path.join(__dirname, '../renderer/overlay.html')).catch(() => {});
-  return overlayView;
 }
 
-function showOverlay(): void {
+/** 对话框打开期间隐藏直播视图：WebContentsView 层级永远高于 UI 页面 DOM，
+ *  不隐藏的话地址输入对话框会被直播画面盖住 */
+let modalVisible = false;
+/** 最近一次 layout:update 上报的各视图矩形，对话框关闭后据此恢复 */
+const lastRects = new Map<number, ViewRect>();
+
+function applyModalVisibility(v: boolean): void {
+  modalVisible = v;
   if (!win) return;
-  const ov = ensureOverlay();
-  const [w, h] = win.getContentSize();
-  ov.setBounds({ x: 0, y: 0, width: w, height: h });
-  dragging = true;
-  // 保险：若松开事件因故丢失（覆盖页未就绪等），30s 后强制收起覆盖层并取消拖拽，
-  // 避免覆盖层永久置顶吞掉全部点击
-  if (overlayFailsafe) clearTimeout(overlayFailsafe);
-  overlayFailsafe = setTimeout(() => {
-    if (dragging) {
-      hideOverlay();
-      win?.webContents.send('drag:overlay', { type: 'cancel' });
+  for (const [id, entry] of views) {
+    if (v) {
+      entry.view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+    } else {
+      const r = lastRects.get(id);
+      if (r) entry.view.setBounds(r);
     }
-  }, 30000);
-}
-
-function hideOverlay(): void {
-  dragging = false;
-  if (overlayFailsafe) {
-    clearTimeout(overlayFailsafe);
-    overlayFailsafe = null;
   }
-  overlayView?.setBounds({ x: 0, y: 0, width: 0, height: 0 });
+  console.log(`[live-matrix] 对话框${v ? '打开，隐藏' : '关闭，恢复'} ${views.size} 个直播视图`);
 }
 
 function sessionFor(p: Platform): Session {
@@ -117,29 +111,17 @@ function scheduleLoginCheck(p: Platform): void {
   loginCheckTimers.set(p, setTimeout(() => void pushLogin(p), 700));
 }
 
-function configPath(): string {
-  return path.join(app.getPath('userData'), 'config.json');
-}
-
-function loadConfig(): SavedConfig {
-  try {
-    const raw = JSON.parse(fs.readFileSync(configPath(), 'utf8')) as SavedConfig;
-    if (!raw || !Array.isArray(raw.slots)) return { version: 1, slots: [] };
-    const slots = raw.slots
-      .filter((s) => s && typeof s.url === 'string')
-      .map((s) => ({ url: s.url, platform: detectPlatform(s.url) }))
-      .filter((s): s is { url: string; platform: Platform } => s.platform !== null)
-      .slice(0, MAX_STREAMS);
-    return { version: 1, slots };
-  } catch {
-    return { version: 1, slots: [] };
-  }
-}
-
-function addStream(url: string, platform: Platform): StreamSlot | null {
-  if (!win || views.size >= MAX_STREAMS) return null;
+function addViewStream(url: string, platform: Platform): StreamSlot | null {
+  if (!win) return null;
   const id = nextId++;
-  const view = new WebContentsView({ webPreferences: { session: sessionFor(platform) } });
+  const view = new WebContentsView({
+    webPreferences: {
+      session: sessionFor(platform),
+      // 注入双击拦截：双击直播画面 = 副窗口与主窗口互换 / 主窗口铺满
+      preload: path.join(__dirname, 'stream-preload.js'),
+      contextIsolation: true,
+    },
+  });
   view.setBackgroundColor('#000000');
   // 初始不可见、静音，等待渲染层上报布局后再定位并按槽位解除静音
   view.setBounds({ x: 0, y: 0, width: 0, height: 0 });
@@ -151,33 +133,56 @@ function addStream(url: string, platform: Platform): StreamSlot | null {
   view.webContents.on('did-fail-load', (_e, code, desc) => {
     if (code !== -3) win?.webContents.send('stream:error', { id, message: `${desc} (${code})` });
   });
-  view.webContents.on('render-process-gone', () => {
+  view.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`[live-matrix] 直播视图 ${id} 渲染进程退出: ${details.reason}`);
     removeStream(id);
     win?.webContents.send('stream:dead', { id });
   });
   // 打开后自动进入网页全屏并隐藏非视频元素
   attachEnhancer(view.webContents, platform);
-  // index 0：插到子视图栈底，保证拖拽覆盖层始终在最上层
+  // index 0：插到子视图栈底，保证 UI 层之上按槽位叠放
   win.contentView.addChildView(view, 0);
   void view.webContents.loadURL(url).catch(() => {});
   views.set(id, { view, url, platform });
-  return { id, url, platform };
+  return { id, url, platform, kind: 'view' };
+}
+
+/** B站优先走直连（自研播放器），解析失败回退内嵌页面 */
+async function addStream(url: string, platform: Platform): Promise<StreamSlot | null> {
+  if (!win || views.size + videoSlots.size >= MAX_STREAMS) return null;
+  if (platform === 'bilibili') {
+    try {
+      const media = await withTimeout(resolveBiliLive(url, sessionFor('bilibili')), 8000);
+      const id = nextId++;
+      videoSlots.set(id, { url, media });
+      console.log(`[live-matrix] B站直连: 房间${media.roomId} qn=${media.qn} ${media.format}`);
+      return { id, url, platform, kind: 'video', media, title: media.title };
+    } catch (err) {
+      console.warn(`[live-matrix] B站直连解析失败，回退页面模式: ${String(err)}`);
+      // 回落到 addViewStream
+    }
+  }
+  return addViewStream(url, platform);
 }
 
 function removeStream(id: number): void {
   const entry = views.get(id);
-  if (!entry) return;
-  views.delete(id);
-  try {
-    win?.contentView.removeChildView(entry.view);
-  } catch {
-    /* 窗口可能已销毁 */
+  if (entry) {
+    views.delete(id);
+    lastRects.delete(id);
+    try {
+      win?.contentView.removeChildView(entry.view);
+    } catch {
+      /* 窗口可能已销毁 */
+    }
+    try {
+      entry.view.webContents.close();
+    } catch {
+      /* 忽略重复销毁 */
+    }
+    return;
   }
-  try {
-    entry.view.webContents.close();
-  } catch {
-    /* 忽略重复销毁 */
-  }
+  videoSlots.delete(id);
 }
 
 function openLogin(p: Platform): void {
@@ -242,9 +247,21 @@ function createWindow(): void {
     },
   });
   // 无边框窗口：工具栏为拖拽区，最小化/最大化/关闭由 UI 内自绘按钮触发（见 IPC win:*）
-  // 覆盖层随窗口创建即预加载，保证首次拖拽前事件监听已就绪
-  ensureOverlay();
-
+  // B站 CDN 强制校验 Referer（实测无 Referer 返回 403）：为 UI 会话中的拉流请求注入
+  // Referer 与浏览器 UA（hls.js / mpegts.js 的请求都走 UI 页面会话）
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['*://*.bilivideo.com/*', '*://*.bilivideo.cn/*', '*://*.akamaized.net/*'] },
+    (details, callback) => {
+      details.requestHeaders['Referer'] = 'https://live.bilibili.com/';
+      details.requestHeaders['User-Agent'] =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
+  // 调试：把 UI 渲染层 console 转发到主进程 stdout（诊断用）
+  win.webContents.on('console-message', (e) => {
+    console.log(`[ui] ${e.message}`);
+  });
   // 禁止 UI 页面缩放，保证 DOM 坐标与直播视图 bounds 始终一一对应
   win.webContents.on('before-input-event', (e, input) => {
     if ((input.control || input.meta) && ['+', '-', '=', '0'].includes(input.key)) {
@@ -259,6 +276,7 @@ function createWindow(): void {
     win?.show();
     if (process.argv.includes('--lm-smoke')) {
       // 冒烟模式：截图后自动退出，用于 CI 验证可启动与布局
+      const smokeMs = Math.max(4000, Number(process.env.LM_SMOKE_MS) || 4000);
       setTimeout(async () => {
         if (process.env.LM_E2E === '1') {
           try {
@@ -266,23 +284,110 @@ function createWindow(): void {
               const out = {};
               const modal = document.getElementById('modalBack');
               out.modalInitiallyHidden = modal.classList.contains('hidden');
-              document.getElementById('addBtn').click();
-              await new Promise((res) => setTimeout(res, 120));
-              out.modalOpenAfterClick = !modal.classList.contains('hidden');
-              const input = document.getElementById('urlInput');
-              input.value = 'https://live.bilibili.com/21452505';
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              document.getElementById('addForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-              await new Promise((res) => setTimeout(res, 900));
-              out.modalClosedAfterSubmit = modal.classList.contains('hidden');
+              const urls = [
+                'https://live.bilibili.com/1986380859', // 直播中 → 直连播放
+                'https://live.douyin.com/745969462470', // 抖音 → 内嵌页面
+                'https://live.bilibili.com/21452505', // 未开播 → 回退内嵌页面
+              ];
+              for (const u of urls) {
+                document.getElementById('addBtn').click();
+                await new Promise((res) => setTimeout(res, 150));
+                const input = document.getElementById('urlInput');
+                input.value = u;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                document.getElementById('addForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                await new Promise((res) => setTimeout(res, 700));
+              }
               out.streamCellCount = document.querySelectorAll('.cell[data-id]').length;
               out.subCountText = document.getElementById('subCount').textContent;
+              out.headBarCount = document.querySelectorAll('.cell-head').length;
+              out.videoCellCount = document.querySelectorAll('.cell[data-id] video').length;
+              // 播放中再次打开对话框（问题1场景）
+              document.getElementById('addBtn').click();
+              await new Promise((res) => setTimeout(res, 300));
+              out.modalOpenWithStreams = !modal.classList.contains('hidden');
+              document.getElementById('cancelBtn').click();
+              await new Promise((res) => setTimeout(res, 300));
+              out.modalClosedAfterCancel = modal.classList.contains('hidden');
+              // 双击副窗口 → 与主窗口互换
+              const cellIds = () => [...document.querySelectorAll('.cell[data-id]')].map((c) => c.dataset.id);
+              const beforeSwap = cellIds();
+              const dbl = () => document.querySelector('.cell[data-id]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+              if (beforeSwap.length >= 2) {
+                document.querySelectorAll('.cell[data-id]')[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+                await new Promise((res) => setTimeout(res, 600));
+                out.orderAfterSubDblClick = cellIds();
+                // 双击主窗口 → 铺满；再次双击 → 还原
+                dbl();
+                await new Promise((res) => setTimeout(res, 600));
+                out.focusOn = document.getElementById('stage').classList.contains('focus');
+                dbl();
+                await new Promise((res) => setTimeout(res, 600));
+                out.focusOff = !document.getElementById('stage').classList.contains('focus');
+                out.orderAfterAll = cellIds();
+              }
               return out;
             })()`);
             console.log('[live-matrix] E2E ' + JSON.stringify(r));
           } catch (err) {
             console.log('[live-matrix] E2E 失败: ' + err);
           }
+        }
+        // 主进程侧最终视图位置（应回到网格布局：主窗口大格 + 副窗口小格）
+        console.log(
+          `[live-matrix] bounds:最终 ${JSON.stringify(
+            [...views.entries()].map(([id, e]) => ({ id, b: e.view.getBounds() })),
+          )}`,
+        );
+        // 直连视频格状态（UI 页面内 <video> 元素）
+        try {
+          const vs = await withTimeout(
+            win!.webContents.executeJavaScript(
+              `[...document.querySelectorAll('.cell[data-id] video')].map((v) => ({
+                ready: v.readyState, paused: v.paused, w: v.videoWidth, t: Math.round(v.currentTime),
+                state: (v.closest('.cell')?.querySelector('.v-state') || {}).textContent || '',
+              }))`,
+            ),
+            3000,
+          );
+          console.log(`[live-matrix] diag videos=${JSON.stringify(vs)}`);
+        } catch {
+          /* 页面可能尚未就绪 */
+        }
+        // 直连槽位信息
+        for (const [id, s] of videoSlots) {
+          console.log(
+            `[live-matrix] diag direct=${id} src=${s.url} fmt=${s.media.format} qn=${s.media.qn ?? '?'}`,
+          );
+        }
+        // 主进程侧诊断：每个直播视图的 bounds 与页面内播放器几何
+        for (const [id, e] of views) {
+          let probe: unknown = null;
+          try {
+            probe = await e.view.webContents.executeJavaScript(`(() => {
+              const rect = (el) => {
+                const r = el.getBoundingClientRect();
+                return [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)];
+              };
+              return {
+                url: location.href.slice(0, 80),
+                ready: document.readyState,
+                vp: [innerWidth, innerHeight],
+                scroll: [document.documentElement.scrollWidth, document.documentElement.scrollHeight],
+                bodyClass: document.body ? document.body.className : '',
+                videos: [...document.querySelectorAll('video')].map(rect),
+                closeBtn: !!document.getElementById('lm-close-x'),
+                key: [...document.querySelectorAll('#live-player,#playerWraper,#fullscreen-container,#player-ctnr,div[data-e2e="living-container"]')]
+                  .slice(0, 5)
+                  .map((el) => ({ id: el.id || el.getAttribute('data-e2e') || '', r: rect(el) })),
+              };
+            })()`);
+          } catch {
+            /* 页面可能尚未就绪 */
+          }
+          console.log(
+            `[live-matrix] 诊断 view=${id} bounds=${JSON.stringify(e.view.getBounds())} probe=${JSON.stringify(probe)}`,
+          );
         }
         try {
           const img = await win?.webContents.capturePage();
@@ -294,31 +399,21 @@ function createWindow(): void {
           /* 截图失败不影响退出码 */
         }
         app.quit();
-      }, 4000);
+      }, smokeMs);
     }
   });
   win.on('closed', () => {
     win = null;
-    overlayView = null;
-    dragging = false;
   });
   const sendMax = () => {
     if (win && !win.isDestroyed()) win.webContents.send('win:maximized', win.isMaximized());
   };
   win.on('maximize', sendMax);
   win.on('unmaximize', sendMax);
-  // UI 渲染进程崩溃时收起覆盖层并重载界面，避免整窗无响应
+  // UI 渲染进程崩溃时重载界面，避免整窗无响应
   win.webContents.on('render-process-gone', (_e, details) => {
     console.error('[live-matrix] UI 渲染进程异常:', details.reason);
-    hideOverlay();
     if (win && !win.isDestroyed()) win.webContents.reload();
-  });
-  win.on('resize', () => {
-    // 拖拽期间窗口尺寸变化时保持覆盖层铺满，渲染层会同时取消本次拖拽
-    if (dragging && win) {
-      const [w, h] = win.getContentSize();
-      overlayView?.setBounds({ x: 0, y: 0, width: w, height: h });
-    }
   });
 
   const devUrl = process.env.LM_DEV ? 'http://localhost:5173/' : null;
@@ -335,24 +430,42 @@ function createWindow(): void {
 function registerIpc(): void {
   ipcMain.on('ui:ready', () => {
     // Map 保持插入顺序，即槽位顺序（第一个为主窗口）
-    const slots: StreamSlot[] = [...views.entries()].map(([id, e]) => ({
-      id,
-      url: e.url,
-      platform: e.platform,
-    }));
-    console.log(`[live-matrix] 渲染层就绪，恢复窗口数: ${slots.length}`);
+    const slots: StreamSlot[] = [
+      ...views.entries(),
+    ].map(([id, e]) => ({ id, url: e.url, platform: e.platform, kind: 'view' as const }));
+    for (const [id, s] of videoSlots) {
+      slots.push({ id, url: s.url, platform: 'bilibili', kind: 'video', media: s.media });
+    }
+    console.log(`[live-matrix] 渲染层就绪，当前窗口数: ${slots.length}`);
     void Promise.all(
       PLATFORMS.map(async (p): Promise<LoginStatus> => ({ platform: p, loggedIn: await isLoggedIn(p) })),
     ).then((logins) => win?.webContents.send('app:init', { slots, logins }));
   });
 
-  ipcMain.handle('stream:add', (_e, url: unknown, platform: unknown) => {
+  ipcMain.handle('stream:add', async (_e, url: unknown, platform: unknown) => {
     if (typeof url !== 'string' || (platform !== 'bilibili' && platform !== 'douyin')) return null;
     return addStream(url, platform);
   });
 
   ipcMain.on('stream:close', (_e, id: unknown) => {
     if (typeof id === 'number') removeStream(id);
+  });
+
+  // 直连流过期/断线：重新解析并下发新地址
+  ipcMain.on('stream:refresh', (_e, id: unknown) => {
+    if (typeof id !== 'number') return;
+    const slot = videoSlots.get(id);
+    if (!slot) return;
+    void withTimeout(resolveBiliLive(slot.url, sessionFor('bilibili')), 8000)
+      .then((media) => {
+        if (!videoSlots.has(id)) return;
+        videoSlots.set(id, { url: slot.url, media });
+        win?.webContents.send('stream:media', { id, media });
+        console.log(`[live-matrix] 直连流已刷新: id=${id} ${media.format}`);
+      })
+      .catch((err) => {
+        win?.webContents.send('stream:error', { id, message: `刷新直播流失败: ${String(err)}` });
+      });
   });
 
   ipcMain.on('layout:update', (_e, items: unknown) => {
@@ -362,14 +475,43 @@ function registerIpc(): void {
       if (!entry || !it?.rect) continue;
       const { x, y, width, height } = it.rect;
       if (![x, y, width, height].every(Number.isFinite)) continue;
-      entry.view.setBounds({
+      const rect = {
         x: Math.round(x),
         y: Math.round(y),
         width: Math.max(0, Math.round(width)),
         height: Math.max(0, Math.round(height)),
-      });
+      };
+      lastRects.set(it.id, rect);
+      // 对话框打开期间不落位（视图保持隐藏），关闭时由 applyModalVisibility 统一恢复
+      if (!modalVisible) entry.view.setBounds(rect);
       // 核心规则：只有主窗口槽位有声，副窗口一律静音
       entry.view.webContents.setAudioMuted(!it.isMain);
+    }
+  });
+
+  ipcMain.on('modal:visible', (_e, v: unknown) => {
+    if (typeof v === 'boolean') applyModalVisibility(v);
+  });
+
+  // 直播视图内的双击（stream-preload 捕获上报）：中继给 UI 层做互换/铺满
+  ipcMain.on('stream:dblclick', (e) => {
+    if (!win) return;
+    for (const [id, entry] of views) {
+      if (entry.view.webContents.id === e.sender.id) {
+        win.webContents.send('stream:dblclick', { id });
+        return;
+      }
+    }
+  });
+
+  // 直播页面内右上角关闭按钮：按发送者定位并关闭对应视图
+  ipcMain.on('stream:close-self', (e) => {
+    for (const [id, entry] of views) {
+      if (entry.view.webContents.id === e.sender.id) {
+        removeStream(id);
+        win?.webContents.send('stream:dead', { id });
+        return;
+      }
     }
   });
 
@@ -380,32 +522,6 @@ function registerIpc(): void {
     else win.maximize();
   });
   ipcMain.on('win:close', () => win?.close());
-
-  ipcMain.on('drag:begin', () => showOverlay());
-  ipcMain.on('drag:end', () => hideOverlay());
-
-  // 覆盖层页面转发的拖拽事件，中继给 UI 渲染层
-  ipcMain.on('ov:event', (_e, v: unknown) => {
-    if (
-      win &&
-      v &&
-      typeof v === 'object' &&
-      typeof (v as { type?: unknown }).type === 'string'
-    ) {
-      win.webContents.send('drag:overlay', v);
-    }
-  });
-
-  ipcMain.on('config:save', (_e, cfg: unknown) => {
-    try {
-      const c = cfg as SavedConfig;
-      if (!c || !Array.isArray(c.slots)) return;
-      fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-      fs.writeFileSync(configPath(), JSON.stringify(c, null, 2), 'utf8');
-    } catch (err) {
-      console.error('[live-matrix] 保存配置失败:', err);
-    }
-  });
 
   ipcMain.on('login:open', (_e, p: unknown) => {
     if (p === 'bilibili' || p === 'douyin') openLogin(p);
@@ -442,12 +558,13 @@ function installMenu(): void {
 }
 
 function bootstrap(): void {
+  // 直连 <video> 允许无手势自动播放（含主窗口的有声播放）
+  app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
   registerIpc();
   app.whenReady().then(() => {
     installMenu();
-    const cfg = loadConfig();
+    // 每次启动都是全新布局：不恢复上次的直播窗口（登录态在 session 分区中，仍然保留）
     createWindow();
-    for (const s of cfg.slots) addStream(s.url, s.platform);
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

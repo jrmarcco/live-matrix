@@ -1,5 +1,14 @@
+import Hls from 'hls.js';
+import mpegts from 'mpegts.js';
 import { detectPlatform, PLATFORM_LABEL, PLATFORMS } from '../electron/platforms';
-import type { InitPayload, LayoutItem, Platform, SavedConfig } from '../electron/types';
+import type {
+  InitPayload,
+  LayoutItem,
+  Platform,
+  StreamDblClickEvent,
+  StreamMedia,
+  StreamMediaEvent,
+} from '../electron/types';
 
 /** 1 主 + 7 副 = 8 个槽位；右侧副窗口网格为 2 列 × 4 行 */
 const MAX_CELLS = 8;
@@ -8,11 +17,15 @@ interface Cell {
   id: number;
   url: string;
   platform: Platform;
+  /** video = 自研播放器直连拉流（B站）；view = 内嵌平台页面 */
+  kind: 'video' | 'view';
+  media?: StreamMedia;
   title?: string;
   error?: string;
 }
 
 let cells: Cell[] = []; // index 0 为主窗口槽位（左上角大画面，有声）
+let focusMode = false; // 双击主窗口进入：主画面铺满舞台，副窗口隐藏；再双击还原
 const loginState: Record<Platform, boolean> = { bilibili: false, douyin: false };
 
 const stage = document.getElementById('stage')!;
@@ -36,22 +49,6 @@ const urlInput = document.getElementById('urlInput') as HTMLInputElement;
 const platHint = document.getElementById('platHint')!;
 const addErr = document.getElementById('addErr')!;
 
-/* ---------------- 工具 ---------------- */
-
-function shortUrl(u: string): string {
-  try {
-    const x = new URL(u);
-    return x.host + (x.pathname === '/' ? '' : x.pathname);
-  } catch {
-    return u;
-  }
-}
-
-function cellTitle(c: Cell): string {
-  if (c.error) return `⚠ ${c.error}`;
-  return c.title || shortUrl(c.url);
-}
-
 /* ---------------- 布局同步 ---------------- */
 
 function sendLayout(): void {
@@ -74,9 +71,16 @@ function sendLayout(): void {
   window.lm.updateLayout(items);
 }
 
+/** video 格子纯 DOM，静音在渲染层控制（view 格子由主进程按 layout 控制） */
+function syncVideoMute(): void {
+  stage.querySelectorAll<HTMLElement>('.cell[data-id]').forEach((el) => {
+    const video = el.querySelector('video');
+    if (video) video.muted = !el.classList.contains('slot-main');
+  });
+}
+
 let resizePending = false;
 window.addEventListener('resize', () => {
-  if (dragState) finishDrag();
   if (resizePending) return;
   resizePending = true;
   requestAnimationFrame(() => {
@@ -85,47 +89,28 @@ window.addEventListener('resize', () => {
   });
 });
 
-/* ---------------- 配置持久化（防抖） ---------------- */
-
-let saveTimer: number | undefined;
-function scheduleSave(): void {
-  window.clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    const cfg: SavedConfig = {
-      version: 1,
-      slots: cells.map((c) => ({ url: c.url, platform: c.platform })),
-    };
-    window.lm.saveConfig(cfg);
-  }, 400);
-}
-
 /* ---------------- 渲染 ---------------- */
 
-function makeStreamCell(c: Cell, isMain: boolean): HTMLElement {
+function makeStreamCell(c: Cell): HTMLElement {
   const el = document.createElement('section');
-  el.className = isMain ? 'cell slot-main' : 'cell';
+  el.className = c.kind === 'video' ? 'cell kind-video' : 'cell';
   el.dataset.id = String(c.id);
-  const tag = c.platform === 'bilibili' ? 'B站' : '抖音';
-  el.innerHTML = `
-    <div class="cell-head">
-      <span class="grip" title="按住拖动到其他窗口可互换位置">⠿</span>
-      <span class="tag ${c.platform}">${tag}</span>
-      <span class="title"></span>
-      <span class="mute-badge">${isMain ? '🔊 主窗口' : '🔇 静音'}</span>
-      ${isMain ? '' : '<button class="hb" data-act="main" title="设为主窗口（接管声音）">主</button>'}
-      <button class="hb" data-act="close" title="关闭">×</button>
-    </div>
-    <div class="cell-body"></div>`;
-  (el.querySelector('.title') as HTMLElement).textContent = cellTitle(c);
-
-  el.querySelector('.cell-head')!.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('button');
-    if (!btn) return;
-    const i = cells.findIndex((x) => x.id === c.id);
-    if (i < 0) return;
-    if (btn.dataset.act === 'close') removeCell(i);
-    else if (btn.dataset.act === 'main') swapCells(i, 0);
-  });
+  if (c.kind === 'video') {
+    // 直连格子：视频元素 + 状态角标 + DOM 关闭按钮（画面是我们自己的 DOM）
+    el.innerHTML = `
+      <div class="cell-body">
+        <video playsinline></video>
+        <span class="v-state"></span>
+        <button class="cell-close" type="button" title="关闭此直播窗口">×</button>
+      </div>`;
+    el.querySelector('.cell-close')!.addEventListener('click', () => {
+      const i = cells.findIndex((x) => x.id === c.id);
+      if (i >= 0) removeCell(i);
+    });
+    attachPlayer(el, c);
+  } else {
+    el.innerHTML = '<div class="cell-body"></div>';
+  }
   return el;
 }
 
@@ -147,11 +132,23 @@ function makeMainPlaceholder(): HTMLElement {
 }
 
 function render(): void {
+  // 复用已有的格子 DOM：appendChild 移动节点不会中断 <video> 播放，
+  // 互换/焦点模式切换时不重载直播画面
+  const existing = new Map<number, HTMLElement>();
+  stage.querySelectorAll<HTMLElement>('.cell[data-id]').forEach((el) => {
+    existing.set(Number(el.dataset.id), el);
+  });
   stage.innerHTML = '';
   if (cells.length === 0) {
     stage.appendChild(makeMainPlaceholder());
   } else {
-    cells.forEach((c, i) => stage.appendChild(makeStreamCell(c, i === 0)));
+    cells.forEach((c, i) => {
+      let el = existing.get(c.id);
+      if (!el) el = makeStreamCell(c);
+      el.classList.toggle('slot-main', i === 0);
+      el.title = i === 0 ? '双击铺满窗口，再次双击还原' : '双击与主窗口互换';
+      stage.appendChild(el);
+    });
   }
   // 副窗口共 7 格（右侧一列 3 格 + 底部一行 4 格），未用的显示占位块
   const subs = Math.max(cells.length - 1, 0);
@@ -161,7 +158,14 @@ function render(): void {
   subCount.textContent = `${subs}/7`;
   addBtn.disabled = cells.length >= MAX_CELLS;
   addBtn.title = addBtn.disabled ? '副窗口已达上限（7 个）' : '添加直播窗口';
-  requestAnimationFrame(sendLayout);
+  // 格子已被移除的播放器随之销毁
+  for (const id of [...players.keys()]) {
+    if (!stage.querySelector(`.cell[data-id="${id}"]`)) destroyPlayer(id);
+  }
+  requestAnimationFrame(() => {
+    sendLayout();
+    syncVideoMute();
+  });
 }
 
 /* ---------------- 槽位操作 ---------------- */
@@ -169,129 +173,169 @@ function render(): void {
 function removeCell(i: number): void {
   const [c] = cells.splice(i, 1);
   if (!c) return;
+  // 关闭的是主窗口时退出焦点模式，避免铺满画面切到新主窗口造成困惑
+  if (i === 0 && focusMode) setFocusMode(false);
   window.lm.closeStream(c.id);
   render();
-  scheduleSave();
 }
 
 function swapCells(i: number, j: number): void {
   if (i === j || i < 0 || j < 0 || i >= cells.length || j >= cells.length) return;
   [cells[i], cells[j]] = [cells[j], cells[i]];
   render();
-  scheduleSave();
 }
 
-/* ---------------- 拖拽置换 ----------------
- * 直播画面是独立的 WebContentsView，叠放在 UI 层之上并会拦截鼠标。
- * 拖拽开始时主进程在最顶层显示一个透明覆盖视图接管全部鼠标事件，
- * 其 move/up/cancel 事件经主进程中继回 UI 层完成命中测试与置换。
- * 置换只改 bounds，不重载页面，直播不中断。
- */
+/* ---------------- 双击：互换 / 焦点模式 ---------------- */
 
-interface DragState {
-  id: number;
-  sx: number;
-  sy: number;
-  moved: boolean;
-  targetId: number;
-  rects: { id: number; x1: number; y1: number; x2: number; y2: number }[];
+function handleStreamDblClick(id: number): void {
+  const i = cells.findIndex((c) => c.id === id);
+  if (i < 0) return;
+  if (i === 0) setFocusMode(!focusMode);
+  else swapCells(i, 0);
 }
 
-let dragState: DragState | null = null;
-let dragWatchdog: number | undefined;
+window.lm.onStreamDblClick((v: StreamDblClickEvent) => handleStreamDblClick(v.id));
 
-stage.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0 || !(e.target instanceof HTMLElement)) return;
-  const head = e.target.closest('.cell-head');
-  if (!head || e.target.closest('button')) return;
-  const cellEl = head.closest('.cell') as HTMLElement | null;
-  const id = Number(cellEl?.dataset.id ?? 0);
-  if (!id || dragState) return;
-
-  dragState = { id, sx: e.clientX, sy: e.clientY, moved: false, targetId: 0, rects: [] };
-  window.lm.dragBegin();
-  // 渲染层看门狗：覆盖层事件链断裂时 10s 后自动结束拖拽
-  window.clearTimeout(dragWatchdog);
-  dragWatchdog = window.setTimeout(() => {
-    if (dragState) finishDrag();
-  }, 10000);
-  e.preventDefault();
+stage.addEventListener('dblclick', (e) => {
+  if (!(e.target instanceof HTMLElement)) return;
+  if (e.target.closest('button')) return;
+  const cellEl = e.target.closest('.cell[data-id]') as HTMLElement | null;
+  if (!cellEl) return;
+  handleStreamDblClick(Number(cellEl.dataset.id));
 });
 
-window.lm.onDragOverlay((v) => {
-  if (!dragState) return;
-  if (v.type === 'move') onDragMove(v.x, v.y);
-  else if (v.type === 'up') finishDrag(v.x, v.y);
-  else finishDrag();
-});
+function setFocusMode(on: boolean): void {
+  if (focusMode === on) return;
+  focusMode = on;
+  stage.classList.toggle('focus', on);
+  // 副窗口 display:none 后 rect 归零，主进程会把对应视图缩为 0（直播不中断）
+  requestAnimationFrame(() => {
+    sendLayout();
+    syncVideoMute();
+  });
+}
 
-function onDragMove(x: number, y: number): void {
-  const st = dragState;
-  if (!st) return;
-  if (!st.moved) {
-    if (Math.hypot(x - st.sx, y - st.sy) < 5) return;
-    st.moved = true;
-    document.body.classList.add('dragging');
-    st.rects = [...stage.querySelectorAll<HTMLElement>('.cell[data-id]')].map((el) => {
-      const r = el.getBoundingClientRect();
-      return { id: Number(el.dataset.id), x1: r.left, y1: r.top, x2: r.right, y2: r.bottom };
+/* ---------------- 直连播放器（B站） ---------------- */
+
+interface PlayerHandle {
+  destroy: () => void;
+}
+
+const players = new Map<number, PlayerHandle>();
+const refreshTimers = new Map<number, number>();
+
+function destroyPlayer(id: number): void {
+  const t = refreshTimers.get(id);
+  if (t) {
+    window.clearTimeout(t);
+    refreshTimers.delete(id);
+  }
+  const p = players.get(id);
+  players.delete(id);
+  try {
+    p?.destroy();
+  } catch {
+    /* 可能已销毁 */
+  }
+}
+
+function setState(id: number, text: string): void {
+  const el = stage.querySelector(`.cell[data-id="${id}"] .v-state`);
+  if (el) el.textContent = text;
+}
+
+function attachPlayer(cellEl: HTMLElement, c: Cell): void {
+  destroyPlayer(c.id);
+  const video = cellEl.querySelector('video');
+  if (!video || !c.media) return;
+  setState(c.id, '载入中…');
+  video.addEventListener(
+    'playing',
+    () => {
+      setState(c.id, '');
+    },
+    { once: true },
+  );
+
+  if (c.media.format === 'flv' && mpegts.getFeatureList().mseLivePlayback) {
+    console.log('[lm-player] flv via mpegts.js', c.media.url.slice(0, 70));
+    // HTTP-FLV：延迟最低，mpegts.js（B站自家维护）
+    const player = mpegts.createPlayer(
+      { type: 'flv', url: c.media.url, isLive: true, cors: true },
+      {
+        enableStashBuffer: false,
+        liveBufferLatencyChasing: true,
+        liveBufferLatencyMaxLatency: 6,
+        lazyLoad: false,
+      },
+    );
+    player.on(mpegts.Events.ERROR, () => {
+      destroyPlayer(c.id);
+      scheduleRefresh(c.id);
+    });
+    player.attachMediaElement(video);
+    player.load();
+    players.set(c.id, {
+      destroy: () => {
+        try {
+          player.pause();
+          player.unload();
+          player.detachMediaElement();
+          player.destroy();
+        } catch {
+          /* 可能已销毁 */
+        }
+      },
+    });
+  } else if (c.media.format === 'hls' && Hls.isSupported()) {
+    console.log('[lm-player] hls via hls.js');
+    const hls = new Hls({ lowLatencyMode: true, backBufferLength: 30, maxBufferLength: 12 });
+    hls.loadSource(c.media.url);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.ERROR, (_e, data) => {
+      if (!data.fatal) return;
+      destroyPlayer(c.id);
+      scheduleRefresh(c.id);
+    });
+    players.set(c.id, { destroy: () => hls.destroy() });
+  } else {
+    // 原生回退：直接给 <video> 赋源
+    console.warn('[lm-player] native fallback, format=', c.media.format);
+    video.src = c.media.url;
+    players.set(c.id, {
+      destroy: () => {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      },
     });
   }
-  setDropTarget(st, hitTest(st, x, y));
+  void video.play().catch(() => {
+    /* 自动播放被拒时等用户点击 */
+  });
 }
 
-function finishDrag(x?: number, y?: number): void {
-  const st = dragState;
-  dragState = null;
-  window.clearTimeout(dragWatchdog);
-  window.lm.dragEnd();
-  document.body.classList.remove('dragging');
-  stage.querySelectorAll<HTMLElement>('.cell.drop-target').forEach((el) =>
-    el.classList.remove('drop-target'),
+/** 流地址过期/断线：节流后请主进程重新解析 */
+function scheduleRefresh(id: number): void {
+  if (refreshTimers.has(id)) return;
+  refreshTimers.set(
+    id,
+    window.setTimeout(() => {
+      refreshTimers.delete(id);
+      const c = cells.find((x) => x.id === id);
+      if (!c || c.kind !== 'video') return;
+      setState(id, '线路刷新中…');
+      window.lm.refreshStream(id);
+    }, 3000),
   );
-  if (st && st.moved && typeof x === 'number' && typeof y === 'number') {
-    const t = hitTest(st, x, y);
-    if (t && t !== st.id) {
-      const i = cells.findIndex((c) => c.id === st.id);
-      const j = cells.findIndex((c) => c.id === t);
-      swapCells(i, j);
-    }
-  }
-}
-
-// 覆盖层异常时的兜底：光标仍在 UI 层可接收时直接结束拖拽
-window.addEventListener('pointerup', (e) => {
-  if (dragState) finishDrag(e.clientX, e.clientY);
-});
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && dragState) finishDrag();
-});
-window.addEventListener('blur', () => {
-  if (dragState) finishDrag();
-});
-
-function hitTest(st: DragState, x: number, y: number): number {
-  for (const r of st.rects) {
-    if (x >= r.x1 && x <= r.x2 && y >= r.y1 && y <= r.y2) return r.id;
-  }
-  return 0;
-}
-
-function setDropTarget(st: DragState, id: number): void {
-  if (st.targetId === id) return;
-  stage.querySelectorAll<HTMLElement>('.cell.drop-target').forEach((el) =>
-    el.classList.remove('drop-target'),
-  );
-  st.targetId = id;
-  if (id && id !== st.id) {
-    stage.querySelector(`.cell[data-id="${id}"]`)?.classList.add('drop-target');
-  }
 }
 
 /* ---------------- 添加对话框 ---------------- */
 
 function openModal(): void {
   if (cells.length >= MAX_CELLS) return;
+  // 直播视图层级高于 UI DOM，打开期间让主进程隐藏它们，保证对话框可见
+  window.lm.setModalVisible(true);
   modalBack.classList.remove('hidden');
   urlInput.value = '';
   updateHint('');
@@ -301,6 +345,7 @@ function openModal(): void {
 
 function closeModal(): void {
   modalBack.classList.add('hidden');
+  window.lm.setModalVisible(false);
 }
 
 function updateHint(value: string): void {
@@ -326,7 +371,9 @@ modalBack.addEventListener('pointerdown', (e) => {
   if (e.target === modalBack) closeModal();
 });
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !modalBack.classList.contains('hidden')) closeModal();
+  if (e.key !== 'Escape') return;
+  if (!modalBack.classList.contains('hidden')) closeModal();
+  else if (focusMode) setFocusMode(false);
 });
 
 addForm.addEventListener('submit', async (e) => {
@@ -347,14 +394,15 @@ addForm.addEventListener('submit', async (e) => {
     return;
   }
   const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  // B站直连解析在主进程完成（带登录 Cookie），可能需要 1-2 秒
   const slot = await window.lm.addStream(normalized, p);
   if (!slot) {
     addErr.textContent = '创建窗口失败，请重试';
     return;
   }
   cells.push(slot);
+  if (focusMode) setFocusMode(false); // 新增副窗口时回到同屏布局展示
   render();
-  scheduleSave();
   closeModal();
 });
 
@@ -366,9 +414,8 @@ function renderChips(): void {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = loginState[p] ? `chip ${p} on` : `chip ${p}`;
-    b.innerHTML = `<span class="dot"></span>${PLATFORM_LABEL[p]}<em>${
-      loginState[p] ? '已登录' : '未登录'
-    }</em>`;
+    b.innerHTML = `<span class="dot"></span>${PLATFORM_LABEL[p]}<em>${loginState[p] ? '已登录' : '未登录'
+      }</em>`;
     b.title = loginState[p]
       ? `点击退出${PLATFORM_LABEL[p]}登录`
       : `点击打开${PLATFORM_LABEL[p]}登录页（扫码登录，状态会自动保存）`;
@@ -389,15 +436,13 @@ function renderChips(): void {
 
 function updateCellDom(id: number, fn: (c: Cell) => void): void {
   const c = cells.find((x) => x.id === id);
-  if (!c) return;
-  fn(c);
-  const el = stage.querySelector<HTMLElement>(`.cell[data-id="${id}"] .title`);
-  if (el) el.textContent = cellTitle(c);
+  if (c) fn(c);
 }
 
 window.lm.onInit((payload: InitPayload) => {
   cells = payload.slots.map((s) => ({ ...s }));
   for (const s of payload.logins) loginState[s.platform] = s.loggedIn;
+  if (focusMode) setFocusMode(false);
   render();
   renderChips();
 });
@@ -408,10 +453,23 @@ window.lm.onLoginStatus((s) => {
 });
 
 window.lm.onStreamTitle((v) => updateCellDom(v.id, (c) => (c.title = v.title)));
-window.lm.onStreamError((v) => updateCellDom(v.id, (c) => (c.error = v.message.slice(0, 40))));
+window.lm.onStreamError((v) =>
+  updateCellDom(v.id, (c) => {
+    c.error = v.message.slice(0, 60);
+    setState(v.id, c.error);
+  }),
+);
 window.lm.onStreamDead((v) => {
   const i = cells.findIndex((c) => c.id === v.id);
   if (i >= 0) removeCell(i);
+});
+// 直连流地址刷新（过期/断线后主进程重新解析下发）
+window.lm.onStreamMedia((v: StreamMediaEvent) => {
+  const c = cells.find((x) => x.id === v.id);
+  if (!c || c.kind !== 'video') return;
+  c.media = v.media;
+  const el = stage.querySelector<HTMLElement>(`.cell[data-id="${v.id}"]`);
+  if (el) attachPlayer(el, c);
 });
 
 /* ---------------- 启动 ---------------- */

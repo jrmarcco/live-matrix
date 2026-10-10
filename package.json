@@ -12,12 +12,12 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.electron.json && vite build",
-    "start": "npm run build && electron .",
+    "start": "pnpm run build && electron .",
     "dev": "concurrently -k -n vite,electron -c blue,green \"vite\" \"cross-env LM_DEV=1 electron .\"",
-    "smoke": "npm run build && electron . --lm-smoke",
-    "dist:win": "npm run build && electron-builder --win --publish never",
-    "dist:mac": "npm run build && electron-builder --mac --publish never",
-    "dist:all": "npm run build && electron-builder --win --mac --publish never"
+    "smoke": "pnpm run build && electron . --lm-smoke",
+    "dist:win": "pnpm run build && electron-builder --win --publish never",
+    "dist:mac": "pnpm run build && electron-builder --mac --publish never",
+    "dist:all": "pnpm run build && electron-builder --win --mac --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -27,5 +27,9 @@
     "electron-builder": "^26.0.12",
     "typescript": "^5.7.0",
     "vite": "^6.0.0"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.3",
+    "mpegts.js": "^1.8.2"
   }
 }

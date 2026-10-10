@@ -347,93 +347,6 @@ button {
   border-color: #2f5a9e;
 }
 
-/* ---------------- 窗口头栏 ---------------- */
-
-.cell-head {
-  flex: 0 0 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  background: #0e1118;
-  border-bottom: 1px solid var(--border);
-  cursor: grab;
-}
-
-.cell-head:hover {
-  background: #12161f;
-}
-
-.cell-head .grip {
-  color: #525c6e;
-  font-size: 15px;
-  line-height: 1;
-  transition: color 0.15s;
-}
-
-.cell-head:hover .grip {
-  color: var(--dim);
-}
-
-.cell-head .tag {
-  flex: 0 0 auto;
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 11.5px;
-  color: #fff;
-}
-
-.tag.bilibili {
-  background: var(--bili);
-}
-
-.tag.douyin {
-  background: var(--dy);
-}
-
-.cell-head .title {
-  flex: 1 1 auto;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #c3cad6;
-  font-size: 12.5px;
-}
-
-.cell-head .mute-badge {
-  flex: 0 0 auto;
-  color: var(--dim);
-  font-size: 12px;
-}
-
-.slot-main .mute-badge {
-  color: var(--accent);
-}
-
-.hb {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dim);
-  font-size: 14px;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.hb:hover {
-  background: #232b3a;
-  color: #fff;
-}
-
-.hb[data-act='main'] {
-  font-size: 12px;
-  border: 1px solid var(--border);
-}
-
 /* ---------------- 窗口主体（直播画面覆盖于此） ---------------- */
 
 .cell-body {
@@ -451,6 +364,58 @@ button {
   justify-content: center;
   color: var(--dim);
   font-size: 13px;
+}
+
+/* 直连格子：视频元素铺满格子，等比居中 */
+.cell-body video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.v-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+  font-size: 13px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+.v-state:empty {
+  display: none;
+}
+
+/* 直连格子的关闭按钮（DOM 层，与页内注入按钮同款样式） */
+.cell-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: rgba(8, 10, 16, 0.55);
+  color: #fff;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.cell-close:hover {
+  background: rgba(200, 40, 40, 0.85);
+  opacity: 1;
 }
 
 /* ---------------- 占位格 ---------------- */
@@ -497,17 +462,17 @@ button {
   border-color: var(--accent);
 }
 
-/* ---------------- 拖拽 ---------------- */
+/* ---------------- 焦点模式（双击主窗口铺满整个舞台） ---------------- */
 
-body.dragging,
-body.dragging * {
-  cursor: grabbing !important;
+#stage.focus .slot-main {
+  grid-column: 1 / -1;
+  grid-row: 1 / -1;
 }
 
-.cell.drop-target {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-color: var(--accent);
+/* 副窗口隐藏（rect 归零 → 主进程把对应视图缩为 0，直播不中断），再次双击还原 */
+#stage.focus .cell:not(.slot-main),
+#stage.focus .placeholder {
+  display: none;
 }
 
 /* ---------------- 添加对话框 ---------------- */
