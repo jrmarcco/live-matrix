@@ -636,8 +636,7 @@ function renderChips(): void {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = loginState[p] ? `chip ${p} on` : `chip ${p}`;
-    b.innerHTML = `<span class="dot"></span>${PLATFORM_LABEL[p]}<em>${loginState[p] ? '已登录' : '未登录'
-      }</em>`;
+    b.innerHTML = `<span class="dot"></span>${PLATFORM_LABEL[p]}`;
     b.title = loginState[p]
       ? `点击退出${PLATFORM_LABEL[p]}登录`
       : `点击打开${PLATFORM_LABEL[p]}登录页（扫码登录，状态会自动保存）`;
