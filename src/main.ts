@@ -18,14 +18,25 @@ interface Cell {
   id: number;
   url: string;
   platform: Platform;
-  /** video = 自研播放器直连拉流（B站）；view = 内嵌平台页面 */
+  /** video = 自研播放器直连拉流（B站/抖音）；view = 内嵌平台页面 */
   kind: 'video' | 'view';
   media?: StreamMedia;
   title?: string;
   error?: string;
 }
 
-let cells: Cell[] = []; // index 0 为主窗口槽位（左上角大画面，有声）
+/** 加载中的占位格（id 为负数，不与主进程分配的正数 id 冲突） */
+interface PendingCell {
+  id: number;
+  url: string;
+  platform: Platform;
+  kind: 'pending';
+}
+
+type StageCell = Cell | PendingCell;
+
+let cells: StageCell[] = []; // index 0 为主窗口槽位（左上角大画面，有声）
+let pendingSeq = -1;
 let focusMode = false; // 双击主窗口进入：主画面铺满舞台，副窗口隐藏；再双击还原
 const loginState: Record<Platform, boolean> = { bilibili: false, douyin: false };
 
@@ -90,10 +101,27 @@ window.addEventListener('resize', () => {
 
 /* ---------------- 渲染 ---------------- */
 
-function makeStreamCell(c: Cell): HTMLElement {
+function makeStreamCell(c: StageCell): HTMLElement {
   const el = document.createElement('section');
   el.className = c.kind === 'video' ? 'cell kind-video' : 'cell';
   el.dataset.id = String(c.id);
+  if (c.kind === 'pending') {
+    // 加载占位格：解析直连地址期间（抖音最长约 15s）的遮罩反馈
+    el.className = 'cell pending';
+    el.innerHTML = `
+      <div class="cell-body">
+        <div class="cell-load">
+          <span class="spin"></span>
+          <span class="txt">正在加载直播…</span>
+        </div>
+        <button class="cell-close" type="button" title="取消此直播">×</button>
+      </div>`;
+    el.querySelector('.cell-close')!.addEventListener('click', () => {
+      const i = cells.findIndex((x) => x.id === c.id);
+      if (i >= 0) removeCell(i);
+    });
+    return el;
+  }
   if (c.kind === 'video') {
     // 直连格子：视频元素 + 状态角标 + 收藏/刷新/关闭按钮（画面是我们自己的 DOM）
     el.innerHTML = `
@@ -389,7 +417,35 @@ window.addEventListener('keydown', (e) => {
   else if (focusMode) setFocusMode(false);
 });
 
-addForm.addEventListener('submit', async (e) => {
+/**
+ * 添加直播：先落一个「加载中」占位格并立即关闭对话框，解析完成后再替换成
+ * 直连视频格 / 内嵌页面格（抖音接口重放最长约 15s，期间界面保持可操作）。
+ */
+function beginAddStream(url: string, platform: Platform, onFail?: () => void): void {
+  const pending: PendingCell = { id: pendingSeq--, url, platform, kind: 'pending' };
+  cells.push(pending);
+  if (focusMode) setFocusMode(false); // 新增副窗口时回到同屏布局展示
+  render();
+  void window.lm.addStream(url, platform).then((slot) => {
+    const i = cells.findIndex((c) => c.id === pending.id);
+    if (!slot) {
+      // 创建失败（理论上仅剩窗口已销毁等罕见场景）：撤掉占位格并回调
+      if (i >= 0) cells.splice(i, 1);
+      render();
+      onFail?.();
+      return;
+    }
+    if (i < 0) {
+      // 用户已在加载期间取消：销毁刚创建的流
+      window.lm.closeStream(slot.id);
+      return;
+    }
+    cells[i] = { ...slot };
+    render();
+  });
+}
+
+addForm.addEventListener('submit', (e) => {
   e.preventDefault();
   addErr.textContent = '';
   const raw = urlInput.value.trim();
@@ -407,16 +463,15 @@ addForm.addEventListener('submit', async (e) => {
     return;
   }
   const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-  // B站直连解析在主进程完成（带登录 Cookie），可能需要 1-2 秒
-  const slot = await window.lm.addStream(normalized, p);
-  if (!slot) {
-    addErr.textContent = '创建窗口失败，请重试';
-    return;
-  }
-  cells.push(slot);
-  if (focusMode) setFocusMode(false); // 新增副窗口时回到同屏布局展示
-  render();
+  // 立即关闭对话框，加载过程由占位格上的遮罩反馈（问题1）
   closeModal();
+  beginAddStream(normalized, p, () => {
+    // 失败时回到对话框并保留输入，方便重试
+    openModal();
+    urlInput.value = raw;
+    updateHint(raw);
+    addErr.textContent = '创建窗口失败，请重试';
+  });
 });
 
 /* ---------------- 收藏夹 ---------------- */
@@ -520,14 +575,11 @@ function persistFavOrder(): void {
   if (changed) window.lm.reorderFavorites(urls);
 }
 
-async function addFavoriteToStage(f: Favorite): Promise<void> {
+function addFavoriteToStage(f: Favorite): void {
   if (cells.length >= MAX_CELLS) return;
-  const slot = await window.lm.addStream(f.url, f.platform);
-  if (!slot) return;
-  cells.push(slot);
-  if (focusMode) setFocusMode(false);
+  // 收藏面板立即收起，加载过程同样由占位格遮罩反馈
   closeFavPanel();
-  render();
+  beginAddStream(f.url, f.platform);
 }
 
 function openFavModal(c: Cell): void {
@@ -602,7 +654,7 @@ function renderChips(): void {
 
 function updateCellDom(id: number, fn: (c: Cell) => void): void {
   const c = cells.find((x) => x.id === id);
-  if (c) fn(c);
+  if (c && c.kind !== 'pending') fn(c);
 }
 
 window.lm.onInit((payload: InitPayload) => {
@@ -640,7 +692,7 @@ window.lm.onStreamMedia((v: StreamMediaEvent) => {
 // 内嵌格页内星标点击 → 弹出别名输入
 window.lm.onStreamFavorite((v) => {
   const c = cells.find((x) => x.id === v.id);
-  if (c) openFavModal(c);
+  if (c && c.kind !== 'pending') openFavModal(c);
 });
 // 收藏列表变更（保存/移除后主进程推送全量）
 window.lm.onFavoritesUpdate((v) => {

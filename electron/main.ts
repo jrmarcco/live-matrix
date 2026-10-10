@@ -320,6 +320,7 @@ function createWindow(): void {
         '*://*.bilivideo.cn/*',
         '*://*.akamaized.net/*',
         '*://*.douyincdn.com/*',
+        '*://*.douyinliving.com/*',
         '*://*.bytecdn.cn/*',
         '*://*.smtcdns.net/*',
       ],
@@ -362,7 +363,7 @@ function createWindow(): void {
               out.modalInitiallyHidden = modal.classList.contains('hidden');
               const urls = [
                 'https://live.bilibili.com/1986380859', // 直播中 → B站 API 直连
-                'https://live.douyin.com/86730210516', // 抖音开播中 → 页面嗅探直连
+                'https://live.douyin.com/27709227417', // 抖音开播中 → 接口重放直连
                 'https://live.bilibili.com/21452505', // 未开播 → 回退内嵌页面
               ];
               for (const u of urls) {
@@ -374,13 +375,15 @@ function createWindow(): void {
                 document.getElementById('addForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
                 await new Promise((res) => setTimeout(res, 700));
               }
-              // 抖音嗅探最长约 18s：等全部格子就位再断言
-              for (let i = 0; i < 44 && document.querySelectorAll('.cell[data-id]').length < urls.length; i++) {
+              // 确认后对话框应立即关闭（问题1场景），加载格立即出现
+              out.modalClosedImmediately = modal.classList.contains('hidden');
+              out.pendingShownDuringAdd = !!document.querySelector('.cell.pending');
+              // 抖音解析最长约 15s：等全部格子就位（pending 格会被真实格替换）再断言
+              for (let i = 0; i < 44 && document.querySelectorAll('.cell[data-id]:not(.pending)').length < urls.length; i++) {
                 await new Promise((res) => setTimeout(res, 500));
               }
               out.streamCellCount = document.querySelectorAll('.cell[data-id]').length;
-              out.subCountText = document.getElementById('subCount').textContent;
-              out.headBarCount = document.querySelectorAll('.cell-head').length;
+              out.pendingLeftAfterSettle = document.querySelectorAll('.cell.pending').length;
               out.videoCellCount = document.querySelectorAll('.cell[data-id] video').length;
               const dyChip = document.querySelector('.chip.douyin');
               out.douyinLoginClass = dyChip ? dyChip.className : 'none';

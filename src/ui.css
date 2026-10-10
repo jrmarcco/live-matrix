@@ -380,6 +380,40 @@ button {
   display: none;
 }
 
+/* ---------------- 加载占位格（解析直连地址期间的遮罩反馈） ---------------- */
+
+.cell.pending .cell-body {
+  background: #05070b;
+}
+
+.cell-load {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--dim);
+  font-size: 13px;
+  background: radial-gradient(ellipse at center, rgba(79, 140, 255, 0.08), rgba(5, 7, 11, 0.9));
+}
+
+.cell-load .spin {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #2b3444;
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: lm-spin 0.9s linear infinite;
+}
+
+@keyframes lm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* 直连格子的右上角按钮 + 右下角刷新按钮（DOM 层，与页内注入按钮同款样式） */
 .cell-close,
 .cell-fav,
