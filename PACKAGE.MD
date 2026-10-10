@@ -5,7 +5,7 @@ git commit -m "feat: ..."
 
 ## 2. 升版本号（三选一）
 pnpm version patch   # 1.0.0 → 1.0.1  修 bug、小调整
-pnpm version minor   # 1.0.0 → 1.1.0  新功能（比如这次的收藏功能就够格 minor）
+pnpm version minor   # 1.0.0 → 1.1.0  新功能
 pnpm version major   # 1.0.0 → 2.0.0  破坏性变更
 
 ## 也可以直接指定版本号
