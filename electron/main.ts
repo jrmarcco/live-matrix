@@ -288,6 +288,9 @@ function waitForDevServer(url: string, timeoutMs = 30000): Promise<void> {
 }
 
 function createWindow(): void {
+  // 开发模式下给窗口/任务栏提供图标（打包后由 exe 内嵌图标接管）；打包产物不含 build/，需判存在
+  const icoPath = path.join(__dirname, '..', '..', 'build', 'icon.ico');
+  const icon = fs.existsSync(icoPath) ? icoPath : undefined;
   win = new BrowserWindow({
     // 16:9 内容区；4×4 网格下每个窗口（主 3×3 / 副 1×1）都接近 16:9
     width: 1600,
@@ -299,6 +302,7 @@ function createWindow(): void {
     frame: false,
     backgroundColor: '#0a0c10',
     title: 'LiveMatrix — 同屏多直播',
+    icon,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

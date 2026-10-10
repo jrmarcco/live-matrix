@@ -46,7 +46,7 @@ pnpm start          # 构建并以生产模式运行
 
 打包环境说明：在 **Windows** 上打 NSIS 安装包开箱即用；在 **Linux**（CI 交叉打包）需要 wine（`sudo apt-get install -y wine`）；macOS 的 DMG 只能在 macOS 上生成（系统限制）。
 
-自定义图标：把 `icon.ico`（Windows）和 `icon.icns`（macOS）放到 `build/` 目录后重新打包即可；未提供时使用默认图标。当前 DMG 未做签名（`mac.identity: null`），分发给他人时 macOS 首次打开需在「系统设置 → 隐私与安全性」中允许；正式分发建议配置 Apple 开发者证书签名。
+应用图标：图标源文件为 `build/icon.jpg`，运行 `pnpm run icons`（依赖 sharp）重新生成 `build/` 下的 `icon.png` / `icon.ico` / `icon.icns`，随后重新打包即可生效（Windows 的 exe/安装器与 macOS 的 DMG 均自动使用）。当前 DMG 未做签名（`mac.identity: null`），分发给他人时 macOS 首次打开需在「系统设置 → 隐私与安全性」中允许；正式分发建议配置 Apple 开发者证书签名。
 
 ## 使用说明
 
