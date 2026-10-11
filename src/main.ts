@@ -227,7 +227,7 @@ function render(): void {
       let el = existing.get(c.id);
       if (!el) el = makeStreamCell(c);
       el.classList.toggle('slot-main', i === 0);
-      el.title = i === 0 ? '双击铺满窗口，再次双击还原' : '双击与主窗口互换';
+      '';
       stage.appendChild(el);
     });
   }
