@@ -43,7 +43,6 @@ pnpm start          # 构建并以生产模式运行
 | --- | --- | --- |
 | `pnpm run dist:win` | `release/LiveMatrix-Setup-1.0.0.exe` | Windows NSIS 安装器（x64），可选安装目录、创建桌面快捷方式 |
 | `pnpm run dist:mac` | `release/LiveMatrix-1.0.0-arm64.dmg` / `-x64.dmg` | macOS 双架构 DMG，需在 macOS 上执行 |
-| `pnpm run dist:all` | 以上全部 | — |
 
 打包环境说明：在 **Windows** 上打 NSIS 安装包开箱即用；在 **Linux**（CI 交叉打包）需要 wine（`sudo apt-get install -y wine`）；macOS 的 DMG 只能在 macOS 上生成（系统限制）。
 

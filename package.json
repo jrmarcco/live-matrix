@@ -18,8 +18,7 @@
     "icons": "node scripts/make-icons.mjs",
     "icons:embed": "node scripts/embed-icons.mjs",
     "dist:win": "pnpm run build && electron-builder --win --publish never",
-    "dist:mac": "pnpm run build && electron-builder --mac --publish never",
-    "dist:all": "pnpm run build && electron-builder --win --mac --publish never"
+    "dist:mac": "pnpm run build && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
