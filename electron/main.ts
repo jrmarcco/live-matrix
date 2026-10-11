@@ -16,6 +16,7 @@ import type {
   StreamSlot,
   StreamMedia,
   ViewRect,
+  VolumeState,
 } from './types';
 
 /** 1 个主窗口槽位 + 最多 7 个副窗口槽位 */
@@ -32,6 +33,8 @@ let win: BrowserWindow | null = null;
 const views = new Map<number, StreamEntry>();
 /** 直连播放模式的直播（B站 API 解析 / 抖音页面嗅探）：记录原地址以便流过期后重新解析 */
 const videoSlots = new Map<number, { url: string; platform: Platform; media: StreamMedia }>();
+/** 当前处于主窗口槽位的内嵌视图 id（主槽位是直连视频格或无直播时为 null） */
+let mainViewId: number | null = null;
 let nextId = 1;
 
 const loginWindows = new Map<Platform, BrowserWindow>();
@@ -182,6 +185,7 @@ async function addStream(url: string, platform: Platform): Promise<StreamSlot | 
 }
 
 function removeStream(id: number): void {
+  if (mainViewId === id) mainViewId = null;
   const entry = views.get(id);
   if (entry) {
     views.delete(id);
@@ -241,6 +245,65 @@ function saveFavorites(): void {
 
 function pushFavorites(): void {
   win?.webContents.send('favorites:update', { items: getFavorites() });
+}
+
+/* ---------------- 主窗口音量（跨启动持久化） ---------------- */
+
+function settingsPath(): string {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+const settings: VolumeState = { volume: 1, muted: false };
+try {
+  const raw = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) as Partial<VolumeState>;
+  if (typeof raw.volume === 'number' && Number.isFinite(raw.volume)) {
+    settings.volume = Math.min(1, Math.max(0, raw.volume));
+  }
+  if (typeof raw.muted === 'boolean') settings.muted = raw.muted;
+} catch {
+  /* 文件不存在或损坏则用默认值 */
+}
+
+let saveSettingsTimer: NodeJS.Timeout | null = null;
+
+function writeSettings(): void {
+  try {
+    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
+    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[live-matrix] 保存设置失败:', err);
+  }
+}
+
+/** 滑杆拖动会高频触发，防抖后再落盘 */
+function persistSettings(): void {
+  if (saveSettingsTimer) clearTimeout(saveSettingsTimer);
+  saveSettingsTimer = setTimeout(() => {
+    saveSettingsTimer = null;
+    writeSettings();
+  }, 500);
+}
+
+/**
+ * 音量状态唯一入口：主进程持有并持久化；主槽位是内嵌视图时下发给页内控件
+ * （音量作用于页内媒体元素，静音走 setAudioMuted）。notifyUi 用于内嵌页控件
+ * 发起的变更——UI 层的直连格控件与其 <video> 需要同步。
+ */
+function setVolumeState(volume: number, muted: boolean, notifyUi: boolean): void {
+  settings.volume = Math.min(1, Math.max(0, volume));
+  settings.muted = muted;
+  persistSettings();
+  if (mainViewId == null) {
+    if (notifyUi) win?.webContents.send('volume:changed', { ...settings });
+    return;
+  }
+  const entry = views.get(mainViewId);
+  if (entry && !entry.view.webContents.isDestroyed()) {
+    entry.view.webContents.send('lm-volume', { ...settings });
+    // 主槽位视图本就不静音（!isMain = false），这里只叠加用户的静音开关
+    entry.view.webContents.setAudioMuted(settings.muted);
+  }
+  if (notifyUi) win?.webContents.send('volume:changed', { ...settings });
 }
 
 function openLogin(p: Platform): void {
@@ -617,7 +680,7 @@ function registerIpc(): void {
     console.log(`[live-matrix] 渲染层就绪，当前窗口数: ${slots.length}`);
     void Promise.all(
       PLATFORMS.map(async (p): Promise<LoginStatus> => ({ platform: p, loggedIn: await isLoggedIn(p) })),
-    ).then((logins) => win?.webContents.send('app:init', { slots, logins }));
+    ).then((logins) => win?.webContents.send('app:init', { slots, logins, ...settings }));
   });
 
   ipcMain.handle('stream:add', async (_e, url: unknown, platform: unknown) => {
@@ -666,8 +729,15 @@ function registerIpc(): void {
       lastRects.set(it.id, rect);
       // 对话框打开期间不落位（视图保持隐藏），关闭时由 applyModalVisibility 统一恢复
       if (!modalVisible) entry.view.setBounds(rect);
-      // 核心规则：只有主窗口槽位有声，副窗口一律静音
-      entry.view.webContents.setAudioMuted(!it.isMain);
+      // 核心规则：只有主窗口槽位有声，副窗口一律静音（再叠加用户的主窗口静音开关）
+      const wasMain = mainViewId === it.id;
+      if (it.isMain) mainViewId = it.id;
+      else if (mainViewId === it.id) mainViewId = null;
+      entry.view.webContents.setAudioMuted(!it.isMain || settings.muted);
+      // 主/副槽位互换时通知页内音量控件跟随显隐
+      if (wasMain !== it.isMain) {
+        entry.view.webContents.send('lm-slot', { isMain: it.isMain, ...settings });
+      }
     }
   });
 
@@ -713,6 +783,33 @@ function registerIpc(): void {
     for (const [id, entry] of views) {
       if (entry.view.webContents.id === e.sender.id) {
         win.webContents.send('stream:favorite', { id });
+        return;
+      }
+    }
+  });
+
+  // UI 层直连格的音量控件（主槽位为 <video> 格时由此驱动）
+  ipcMain.on('volume:set', (_e, volume: unknown, muted: unknown) => {
+    if (typeof volume !== 'number' || !Number.isFinite(volume)) return;
+    if (typeof muted !== 'boolean') return;
+    setVolumeState(volume, muted, false);
+  });
+
+  // 内嵌页内的音量控件上报：仅接受当前主槽位视图的变更，并回推 UI 层同步
+  ipcMain.on('stream:volume-self', (e, volume: unknown, muted: unknown) => {
+    if (typeof volume !== 'number' || !Number.isFinite(volume)) return;
+    if (typeof muted !== 'boolean') return;
+    if (mainViewId == null) return;
+    const entry = views.get(mainViewId);
+    if (!entry || entry.view.webContents.id !== e.sender.id) return;
+    setVolumeState(volume, muted, true);
+  });
+
+  // 页内覆盖层挂载完成（含页面 reload 后）：回发当前槽位与音量状态
+  ipcMain.on('stream:overlay-ready', (e) => {
+    for (const [id, entry] of views) {
+      if (entry.view.webContents.id === e.sender.id) {
+        entry.view.webContents.send('lm-state', { isMain: mainViewId === id, ...settings });
         return;
       }
     }
@@ -824,6 +921,14 @@ function bootstrap(): void {
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+  // 防抖中的音量保存兜底：刚调完音量就关窗也不丢
+  app.on('will-quit', () => {
+    if (saveSettingsTimer) {
+      clearTimeout(saveSettingsTimer);
+      saveSettingsTimer = null;
+      writeSettings();
+    }
   });
 }
 

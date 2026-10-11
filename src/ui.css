@@ -98,7 +98,7 @@ button {
   align-items: center;
   gap: 7px;
   height: 32px;
-  padding: 0 13px;
+  padding: 0 11px;
   border-radius: 16px;
   border: 1px solid var(--border);
   background: var(--panel-2);
@@ -106,6 +106,13 @@ button {
   font-size: 13px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
+}
+
+/* 平台图标替代文字标签（B站粉 / TikTok 浅白，均为亮色原图） */
+.chip .chip-ico {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .chip:hover {
@@ -144,14 +151,14 @@ button {
   border-color: rgba(79, 163, 255, 0.4);
 }
 
-/* 工具栏「收藏」：与登录标签同族的胶囊按钮，金星图标点缀 */
+/* 工具栏「收藏」：与登录标签同族的胶囊按钮，星形图标 + 文字，金色边框常驻 */
 #favBtn {
   display: flex;
   align-items: center;
   gap: 7px;
   height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
+  padding: 0 11px;
+  border: 1px solid rgba(251, 191, 36, 0.5);
   border-radius: 16px;
   background: var(--panel-2);
   color: var(--text);
@@ -161,17 +168,14 @@ button {
 }
 
 #favBtn:hover {
-  border-color: rgba(251, 191, 36, 0.45);
+  border-color: rgba(251, 191, 36, 0.85);
   background: #1d2130;
 }
 
-#favBtn svg {
-  width: 14px;
-  height: 14px;
-  fill: #fbbf24;
-  stroke: #fbbf24;
-  stroke-width: 1.7;
-  stroke-linejoin: round;
+#favBtn img {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 /* ---------------- 按钮 ---------------- */
@@ -445,7 +449,8 @@ button {
 }
 
 /* 直连格子的右上角按钮 + 右下角刷新按钮（DOM 层，与页内注入按钮同款样式）
- * 玻璃质感小芯片：平时低透明度隐入画面，悬停提亮并轻微上浮 */
+ * 玻璃质感小芯片：平时低透明度隐入画面，悬停提亮并轻微上浮
+ * 图标为 build/ 下 PNG 内嵌 data URL，黑色图形经 invert 反色为白 */
 .cell-close,
 .cell-fav,
 .cell-refresh {
@@ -469,16 +474,32 @@ button {
   transition: opacity 0.18s, background 0.18s, transform 0.18s, filter 0.18s;
 }
 
+.cell-close img,
+.cell-fav img,
+.cell-refresh img,
+.cell-volume img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  pointer-events: none;
+}
+
+/* 黑色图标反色为白（金色星标 favorite_light 不反色） */
+.cell-close img,
+.cell-fav .ic-fav-off,
+.cell-refresh img,
+.cell-volume img {
+  filter: invert(1);
+}
+
 .cell-close {
   right: 8px;
-  font-size: 19px;
 }
 
 .cell-refresh {
   top: auto;
   bottom: 8px;
   right: 8px;
-  font-size: 18px;
 }
 
 .cell-close:hover,
@@ -496,38 +517,87 @@ button {
   background: rgba(200, 40, 40, 0.85);
 }
 
-/* 收藏星标：置于格子左上角（关闭在右上、刷新在右下），SVG 描边星，
- * 悬停中性提亮；收藏后（on）实心金星带柔光 */
+/* 收藏星标：置于格子左上角（关闭在右上、刷新在右下），比其他芯片略大一圈，
+ * 无背景：星标直接浮在画面上（悬停仅提亮，已收藏态金色柔光），
+ * 双图标按收藏态切换（未收藏反白星 / 已收藏金星） */
 .cell-fav {
   left: 8px;
-  color: rgba(255, 255, 255, 0.92);
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-.cell-fav svg {
-  width: 16px;
-  height: 16px;
+.cell-fav img {
+  width: 20px;
+  height: 20px;
+}
+
+.cell-fav .ic-fav-on {
+  display: none;
+}
+
+.cell-fav.on .ic-fav-on {
   display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linejoin: round;
 }
 
-.cell-fav:hover {
-  background: rgba(24, 30, 44, 0.78);
+.cell-fav.on .ic-fav-off {
+  display: none;
 }
 
 .cell-fav.on {
-  color: #fbbf24;
   opacity: 0.95;
-}
-
-.cell-fav.on svg {
-  fill: currentColor;
 }
 
 .cell-fav.on:hover {
   filter: drop-shadow(0 0 5px rgba(251, 191, 36, 0.5));
+}
+
+/* ---------------- 主窗口静音按钮 ----------------
+ * 刷新按钮正上方的玻璃芯片，点击切换静音；双图标按状态切换（喇叭 / 静音）。
+ * 默认隐藏，仅主槽位（.slot-main）的直连格显示（内嵌格按钮在页内注入）。 */
+.cell-volume {
+  position: absolute;
+  bottom: 46px; /* 刷新按钮（底 8px + 高 30px）再留 8px 间距 */
+  right: 8px;
+  display: none;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: rgba(10, 13, 20, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.18s, background 0.18s, transform 0.18s;
+}
+
+.cell.slot-main .cell-volume {
+  display: grid;
+}
+
+.cell-volume:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  background: rgba(24, 30, 44, 0.78);
+}
+
+/* 双图标：有声喇叭（volume）/ 静音（mute），按 .muted 类切换 */
+.cell-volume .ic-vol-off {
+  display: none;
+}
+
+.cell-volume.muted .ic-vol-off {
+  display: block;
+}
+
+.cell-volume.muted .ic-vol-on {
+  display: none;
 }
 
 /* ---------------- 收藏夹面板 ---------------- */
@@ -635,12 +705,12 @@ button {
   border-style: dashed;
 }
 
+/* 收藏条目开头的平台图标（B站粉 / TikTok 浅白，原图即可） */
 .fav-item .tag {
   flex: 0 0 auto;
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 11.5px;
-  color: #fff;
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .fav-item .alias {

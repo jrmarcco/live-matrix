@@ -16,6 +16,7 @@
     "dev": "concurrently -k -n vite,electron -c blue,green \"vite\" \"cross-env LM_DEV=1 electron .\"",
     "smoke": "pnpm run build && electron . --lm-smoke",
     "icons": "node scripts/make-icons.mjs",
+    "icons:embed": "node scripts/embed-icons.mjs",
     "dist:win": "pnpm run build && electron-builder --win --publish never",
     "dist:mac": "pnpm run build && electron-builder --mac --publish never",
     "dist:all": "pnpm run build && electron-builder --win --mac --publish never"

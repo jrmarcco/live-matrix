@@ -46,10 +46,18 @@ export interface LoginStatus {
   loggedIn: boolean;
 }
 
-/** 启动时主进程下发给渲染层的初始状态（不恢复直播窗口，仅登录态） */
+/** 启动时主进程下发给渲染层的初始状态（不恢复直播窗口，仅登录态与音量） */
 export interface InitPayload {
   slots: StreamSlot[];
   logins: LoginStatus[];
+  volume: number;
+  muted: boolean;
+}
+
+/** 主窗口音量状态（0..1 + 静音；主进程持久化，内嵌页控件变更时回推 UI 层） */
+export interface VolumeState {
+  volume: number;
+  muted: boolean;
 }
 
 export interface StreamTitleEvent {

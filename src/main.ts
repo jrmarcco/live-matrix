@@ -1,5 +1,6 @@
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
+import { ICONS } from '../electron/icon-data';
 import { detectPlatform, PLATFORM_LABEL, PLATFORMS } from '../electron/platforms';
 import type {
   Favorite,
@@ -9,6 +10,7 @@ import type {
   StreamDblClickEvent,
   StreamMedia,
   StreamMediaEvent,
+  VolumeState,
 } from '../electron/types';
 
 /** 1 主 + 7 副 = 8 个槽位；右侧副窗口网格为 2 列 × 4 行 */
@@ -39,6 +41,10 @@ let cells: StageCell[] = []; // index 0 为主窗口槽位（左上角大画面�
 let pendingSeq = -1;
 let focusMode = false; // 双击主窗口进入：主画面铺满舞台，副窗口隐藏；再双击还原
 const loginState: Record<Platform, boolean> = { bilibili: false, douyin: false };
+
+/** 主窗口音量（0..1 + 静音）：主进程持久化，内嵌页控件变更时经 volume:changed 回推 */
+let mainVolume = 1;
+let mainMuted = false;
 
 const stage = document.getElementById('stage')!;
 const loginChips = document.getElementById('loginChips')!;
@@ -81,11 +87,31 @@ function sendLayout(): void {
   window.lm.updateLayout(items);
 }
 
-/** video 格子纯 DOM，静音在渲染层控制（view 格子由主进程按 layout 控制） */
-function syncVideoMute(): void {
+/** video 格子纯 DOM，音量/静音在渲染层控制（view 格子由主进程按 layout 控制） */
+function syncVideoAudio(): void {
   stage.querySelectorAll<HTMLElement>('.cell[data-id]').forEach((el) => {
     const video = el.querySelector('video');
-    if (video) video.muted = !el.classList.contains('slot-main');
+    if (!video) return;
+    video.volume = mainVolume;
+    video.muted = !el.classList.contains('slot-main') || mainMuted;
+  });
+}
+
+/** 静音按钮操作入口：本地立即生效，同时交主进程持久化/转发 */
+function applyVolume(volume: number, muted: boolean): void {
+  mainVolume = Math.min(1, Math.max(0, volume));
+  mainMuted = muted;
+  window.lm.setVolume(mainVolume, mainMuted);
+  updateVolumeControls();
+  syncVideoAudio();
+}
+
+/** 把当前静音态刷到所有直连格的音量按钮（显隐由 .slot-main CSS 控制，
+ *  图标双态由 .muted 类切换：有声喇叭 / 静音） */
+function updateVolumeControls(): void {
+  const silent = mainMuted || mainVolume === 0;
+  stage.querySelectorAll<HTMLElement>('.cell-volume').forEach((btn) => {
+    btn.classList.toggle('muted', silent);
   });
 }
 
@@ -100,10 +126,6 @@ window.addEventListener('resize', () => {
 });
 
 /* ---------------- 渲染 ---------------- */
-
-/** 星形图标（描边星，收藏态由 CSS 填充为金色实心；避免系统字体的 ☆/★ 字形不一致） */
-const STAR_ICON =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>';
 
 function makeStreamCell(c: StageCell): HTMLElement {
   const el = document.createElement('section');
@@ -127,20 +149,33 @@ function makeStreamCell(c: StageCell): HTMLElement {
     return el;
   }
   if (c.kind === 'video') {
-    // 直连格子：视频元素 + 状态角标 + 收藏/刷新/关闭按钮（画面是我们自己的 DOM）
+    // 直连格子：视频元素 + 状态角标 + 收藏/刷新/关闭按钮 + 主槽位静音按钮（画面是我们自己的 DOM）
+    // 图标为 build/ 下 PNG 的内嵌 data URL（黑色图标由 CSS 反色为白）
     el.innerHTML = `
       <div class="cell-body">
         <video playsinline></video>
         <span class="v-state"></span>
-        <button class="cell-fav" type="button" title="收藏此直播">${STAR_ICON}</button>
-        <button class="cell-refresh" type="button" title="刷新直播">↻</button>
-        <button class="cell-close" type="button" title="关闭此直播窗口">×</button>
+        <button class="cell-fav" type="button" title="收藏此直播">
+          <img class="ic-fav-off" src="${ICONS.favoriteDark}" alt="" draggable="false" />
+          <img class="ic-fav-on" src="${ICONS.favoriteLight}" alt="" draggable="false" />
+        </button>
+        <button class="cell-refresh" type="button" title="刷新直播"><img src="${ICONS.refresh}" alt="" draggable="false" /></button>
+        <button class="cell-volume" type="button" title="静音 / 取消静音">
+          <img class="ic-vol-on" src="${ICONS.volume}" alt="" draggable="false" />
+          <img class="ic-vol-off" src="${ICONS.mute}" alt="" draggable="false" />
+        </button>
+        <button class="cell-close" type="button" title="关闭此直播窗口"><img src="${ICONS.close}" alt="" draggable="false" /></button>
       </div>`;
     el.querySelector('.cell-close')!.addEventListener('click', () => {
       const i = cells.findIndex((x) => x.id === c.id);
       if (i >= 0) removeCell(i);
     });
     el.querySelector('.cell-fav')!.addEventListener('click', () => openFavModal(c));
+    el.querySelector('.cell-volume')!.addEventListener('click', () => {
+      // 静音态点击 → 恢复（历史设置音量为 0 时给个默认值）；有声态点击 → 静音
+      const silent = mainMuted || mainVolume === 0;
+      applyVolume(silent ? (mainVolume > 0 ? mainVolume : 0.6) : mainVolume, !silent);
+    });
     el.querySelector('.cell-refresh')!.addEventListener('click', () => {
       const cc = cells.find((x) => x.id === c.id);
       if (!cc || cc.kind !== 'video') return;
@@ -206,9 +241,10 @@ function render(): void {
     if (!stage.querySelector(`.cell[data-id="${id}"]`)) destroyPlayer(id);
   }
   updateFavStates();
+  updateVolumeControls();
   requestAnimationFrame(() => {
     sendLayout();
-    syncVideoMute();
+    syncVideoAudio();
   });
 }
 
@@ -255,7 +291,7 @@ function setFocusMode(on: boolean): void {
   // 副窗口 display:none 后 rect 归零，主进程会把对应视图缩为 0（直播不中断）
   requestAnimationFrame(() => {
     sendLayout();
-    syncVideoMute();
+    syncVideoAudio();
   });
 }
 
@@ -525,7 +561,7 @@ function renderFavList(): void {
     item.draggable = true;
     item.dataset.url = f.url;
     const tag = f.platform === 'bilibili' ? 'B站' : '抖音';
-    item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><span class="tag ${f.platform}">${tag}</span><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
+    item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><img class="tag" src="${CHIP_ICON[f.platform]}" alt="${tag}" title="${tag}" draggable="false" /><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
     (item.querySelector('.alias') as HTMLElement).textContent = f.alias;
     item.title = `点击添加：${tag} · ${f.alias}（拖动可调整顺序）`;
     item.addEventListener('click', (e) => {
@@ -630,15 +666,22 @@ function updateFavStates(): void {
 
 /* ---------------- 登录状态 ---------------- */
 
+/** 工具栏「收藏」按钮：星形图标（米白原图，不反色）+ 文字 */
+document.getElementById('favBtn')!.innerHTML = `<img src="${ICONS.star}" alt="" draggable="false" />收藏`;
+
+/** 登录标签的平台图标（B站粉 / TikTok 浅白，均为亮色原图） */
+const CHIP_ICON: Record<Platform, string> = { bilibili: ICONS.bilibili, douyin: ICONS.tiktok };
+
 function renderChips(): void {
   loginChips.innerHTML = '';
   for (const p of PLATFORMS) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = loginState[p] ? `chip ${p} on` : `chip ${p}`;
-    b.innerHTML = `<span class="dot"></span>${PLATFORM_LABEL[p]}`;
+    // 平台图标替代文字标签
+    b.innerHTML = `<span class="dot"></span><img class="chip-ico" src="${CHIP_ICON[p]}" alt="" draggable="false" />`;
     b.title = loginState[p]
-      ? `点击退出${PLATFORM_LABEL[p]}登录`
+      ? `${PLATFORM_LABEL[p]}已登录，点击退出`
       : `点击打开${PLATFORM_LABEL[p]}登录页（扫码登录，状态会自动保存）`;
     b.addEventListener('click', async () => {
       if (loginState[p]) {
@@ -663,9 +706,19 @@ function updateCellDom(id: number, fn: (c: Cell) => void): void {
 window.lm.onInit((payload: InitPayload) => {
   cells = payload.slots.map((s) => ({ ...s }));
   for (const s of payload.logins) loginState[s.platform] = s.loggedIn;
+  mainVolume = typeof payload.volume === 'number' ? payload.volume : 1;
+  mainMuted = !!payload.muted;
   if (focusMode) setFocusMode(false);
   render();
   renderChips();
+});
+
+// 主槽位为内嵌页时，页内音量控件发起的变更 → 同步本地状态与直连格控件
+window.lm.onVolumeChanged((v: VolumeState) => {
+  mainVolume = v.volume;
+  mainMuted = v.muted;
+  updateVolumeControls();
+  syncVideoAudio();
 });
 
 window.lm.onLoginStatus((s) => {

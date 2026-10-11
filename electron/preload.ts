@@ -14,6 +14,7 @@ import type {
   StreamMediaEvent,
   StreamSlot,
   StreamTitleEvent,
+  VolumeState,
 } from './types';
 
 const api = {
@@ -28,6 +29,14 @@ const api = {
 
   /** 上传全部窗口的位置；主进程据此 setBounds 并按 isMain 控制静音 */
   updateLayout: (items: LayoutItem[]) => void ipcRenderer.send('layout:update', items),
+
+  /** 主窗口音量（0..1 + 静音）：主进程持久化，主槽位为内嵌页时转发给页内控件 */
+  setVolume: (volume: number, muted: boolean) =>
+    void ipcRenderer.send('volume:set', volume, muted),
+  /** 内嵌页内音量控件发起的变更（回推 UI 层保持两边控件一致） */
+  onVolumeChanged: (cb: (v: VolumeState) => void) => {
+    ipcRenderer.on('volume:changed', (_e, v) => cb(v));
+  },
 
   /** 地址对话框可见性：打开期间主进程隐藏全部直播视图，避免画面盖住对话框 */
   setModalVisible: (v: boolean) => void ipcRenderer.send('modal:visible', v),
