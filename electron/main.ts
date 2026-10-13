@@ -4,9 +4,10 @@ import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { resolveBiliLive } from './bilibili';
-import { attachDouyinSniffer, sniffDouyinLive } from './douyin';
+import { sniffDouyinLive } from './douyin';
 import { attachEnhancer } from './enhance';
 import { LOGIN_URL, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
+import { OfflineError } from './types';
 import type {
   Favorite,
   FavoriteSaveRequest,
@@ -33,6 +34,8 @@ let win: BrowserWindow | null = null;
 const views = new Map<number, StreamEntry>();
 /** 直连播放模式的直播（B站 API 解析 / 抖音页面嗅探）：记录原地址以便流过期后重新解析 */
 const videoSlots = new Map<number, { url: string; platform: Platform; media: StreamMedia }>();
+/** 未开播的直播间（纯 UI 占位格，不加载页面）：记录原地址以便刷新重试 */
+const offlineSlots = new Map<number, { url: string; platform: Platform }>();
 /** 当前处于主窗口槽位的内嵌视图 id（主槽位是直连视频格或无直播时为 null） */
 let mainViewId: number | null = null;
 let nextId = 1;
@@ -90,8 +93,6 @@ function sessionFor(p: Platform): Session {
     // 观看直播不需要任何设备权限，一律拒绝
     ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     ses.cookies.on('changed', () => scheduleLoginCheck(p));
-    // 抖音分区挂常驻拉流观察器（页面嗅探直连用）
-    if (p === 'douyin') attachDouyinSniffer(ses);
   }
   return ses;
 }
@@ -162,9 +163,13 @@ function addViewStream(url: string, platform: Platform): StreamSlot | null {
   return { id, url, platform, kind: 'view' };
 }
 
-/** B站走 API 直连、抖音走页面嗅探直连；解析失败回退内嵌页面 */
+/**
+ * B站走 API 直连、抖音走页面嗅探直连；未开播落「未开播」占位格（不回退内嵌
+ * 页面——未开播页面的轮播视频/浮层会盖住注入的控制按钮，导致窗口关不掉）；
+ * 其余解析失败（风控/接口变动）回退内嵌页面。
+ */
 async function addStream(url: string, platform: Platform): Promise<StreamSlot | null> {
-  if (!win || views.size + videoSlots.size >= MAX_STREAMS) return null;
+  if (!win || views.size + videoSlots.size + offlineSlots.size >= MAX_STREAMS) return null;
   try {
     let media: StreamMedia;
     if (platform === 'bilibili') {
@@ -179,6 +184,12 @@ async function addStream(url: string, platform: Platform): Promise<StreamSlot | 
     );
     return { id, url, platform, kind: 'video', media, title: media.title };
   } catch (err) {
+    if (err instanceof OfflineError) {
+      const id = nextId++;
+      offlineSlots.set(id, { url, platform });
+      console.log(`[live-matrix] ${platform} 未开播，落占位格: ${url}`);
+      return { id, url, platform, kind: 'offline' };
+    }
     console.warn(`[live-matrix] ${platform} 直连解析失败，回退页面模式: ${String(err)}`);
   }
   return addViewStream(url, platform);
@@ -203,6 +214,7 @@ function removeStream(id: number): void {
     return;
   }
   videoSlots.delete(id);
+  offlineSlots.delete(id);
 }
 
 /* ---------------- 收藏夹（跨启动持久化，与窗口会话无关） ---------------- */
@@ -426,8 +438,8 @@ function createWindow(): void {
               out.modalInitiallyHidden = modal.classList.contains('hidden');
               const urls = [
                 'https://live.bilibili.com/1986380859', // 直播中 → B站 API 直连
-                'https://live.douyin.com/27709227417', // 抖音开播中 → 接口重放直连
-                'https://live.bilibili.com/21452505', // 未开播 → 回退内嵌页面
+                'https://live.douyin.com/531854687617', // 抖音未开播（女流66）→ 捕获 enter 响应判定 → 未开播占位格
+                'https://live.bilibili.com/21452505', // 未开播 → 未开播占位格
               ];
               for (const u of urls) {
                 document.querySelector('.placeholder').click();
@@ -446,6 +458,7 @@ function createWindow(): void {
                 await new Promise((res) => setTimeout(res, 500));
               }
               out.streamCellCount = document.querySelectorAll('.cell[data-id]').length;
+              out.offlineCellCount = document.querySelectorAll('.cell.kind-offline').length;
               out.pendingLeftAfterSettle = document.querySelectorAll('.cell.pending').length;
               out.videoCellCount = document.querySelectorAll('.cell[data-id] video').length;
               const dyChip = document.querySelector('.chip.douyin');
@@ -474,6 +487,9 @@ function createWindow(): void {
                 out.focusOff = !document.getElementById('stage').classList.contains('focus');
                 out.orderAfterAll = cellIds();
               }
+              // E2E 直接跑在真实用户数据上：先快照收藏夹，结束后完整还原
+              // （收藏测试按 url 去重保存，可能覆盖用户已有条目的别名）
+              const favSnapshot = await window.lm.getFavorites();
               // 收藏流程：星标 → 输入别名 → 面板列表 → 点击添加
               const favBtnCell = document.querySelector('.cell[data-id] .cell-fav');
               if (favBtnCell) {
@@ -484,6 +500,9 @@ function createWindow(): void {
                 ai.value = 'E2E收藏';
                 document.getElementById('favForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
                 await new Promise((res) => setTimeout(res, 500));
+                // 记录本次写入的条目，测试末尾按 url 移除（save 按 url 去重，
+                // 可能覆盖同名旧条目，按 url 删除才准确）
+                out.favSavedUrl = (await window.lm.getFavorites()).find((f) => f.alias === 'E2E收藏')?.url ?? null;
                 document.getElementById('favBtn').click();
                 await new Promise((res) => setTimeout(res, 300));
                 out.favPanelShown = !document.getElementById('favWrap').classList.contains('hidden');
@@ -542,6 +561,38 @@ function createWindow(): void {
                 await new Promise((res) => setTimeout(res, 120));
                 out.videoRefreshState = vCell.querySelector('.v-state').textContent;
               }
+              // 未开播格刷新按钮：点击后显示「检测中…」，探测完成回到「仍未开播」
+              //（主播已开播时该格会被替换为直连格，原元素从 DOM 脱离）
+              const oCell = document.querySelector('.cell.kind-offline[data-id]');
+              const oBtn = oCell ? oCell.querySelector('.cell-refresh') : null;
+              out.offlineRefreshBtn = !!oBtn;
+              if (oBtn) {
+                oBtn.click();
+                await new Promise((res) => setTimeout(res, 150));
+                out.offlineHintDuringCheck = oCell.querySelector('.cell-offline .txt').textContent;
+                for (let i = 0; i < 20 && oCell.isConnected
+                  && oCell.querySelector('.cell-offline .txt').textContent === '检测中…'; i++) {
+                  await new Promise((res) => setTimeout(res, 500));
+                }
+                out.offlineHintAfterCheck = oCell.isConnected
+                  ? oCell.querySelector('.cell-offline .txt').textContent
+                  : '已开播升级为直连格';
+              }
+              // 还原收藏夹到快照状态：删除 E2E 新增、恢复被测试覆盖的
+              // 别名/条目，并按快照顺序重排（对用户数据零副作用）
+              const favNow = await window.lm.getFavorites();
+              for (const f of favNow) {
+                if (!favSnapshot.some((s) => s.url === f.url)) window.lm.removeFavorite(f.url);
+              }
+              for (const s of favSnapshot) {
+                const c = (await window.lm.getFavorites()).find((f) => f.url === s.url);
+                if (!c || c.alias !== s.alias || c.platform !== s.platform) window.lm.saveFavorite(s);
+              }
+              await new Promise((res) => setTimeout(res, 250));
+              window.lm.reorderFavorites(favSnapshot.map((s) => s.url));
+              await new Promise((res) => setTimeout(res, 250));
+              out.favoritesRestored =
+                JSON.stringify(await window.lm.getFavorites()) === JSON.stringify(favSnapshot);
               return out;
             })()`);
             console.log('[live-matrix] E2E ' + JSON.stringify(r));
@@ -677,6 +728,9 @@ function registerIpc(): void {
     for (const [id, s] of videoSlots) {
       slots.push({ id, url: s.url, platform: s.platform, kind: 'video', media: s.media });
     }
+    for (const [id, s] of offlineSlots) {
+      slots.push({ id, url: s.url, platform: s.platform, kind: 'offline' });
+    }
     console.log(`[live-matrix] 渲染层就绪，当前窗口数: ${slots.length}`);
     void Promise.all(
       PLATFORMS.map(async (p): Promise<LoginStatus> => ({ platform: p, loggedIn: await isLoggedIn(p) })),
@@ -692,24 +746,45 @@ function registerIpc(): void {
     if (typeof id === 'number') removeStream(id);
   });
 
-  // 直连流过期/断线：重新解析并下发新地址（B站 API / 抖音重新嗅探）
+  // 直连流过期/断线：重新解析并下发新地址（B站 API / 抖音重新嗅探）；
+  // 未开播占位格：重新探测，开播后原地升级为直连格
   ipcMain.on('stream:refresh', (_e, id: unknown) => {
-    if (typeof id !== 'number') return;
+    if (typeof id !== 'number' || !win) return;
     const slot = videoSlots.get(id);
-    if (!slot || !win) return;
-    const resolve =
-      slot.platform === 'bilibili'
-        ? resolveBiliLive(slot.url, sessionFor('bilibili')).then((media) => ({ media, url: slot.url }))
-        : sniffDouyinLive(slot.url, sessionFor('douyin'), win).then((media) => ({ media, url: slot.url }));
-    void withTimeout(resolve, 20000)
-      .then(({ media }) => {
-        if (!videoSlots.has(id)) return;
-        videoSlots.set(id, { url: slot.url, platform: slot.platform, media });
+    if (slot) {
+      const resolve =
+        slot.platform === 'bilibili'
+          ? resolveBiliLive(slot.url, sessionFor('bilibili')).then((media) => ({ media, url: slot.url }))
+          : sniffDouyinLive(slot.url, sessionFor('douyin'), win).then((media) => ({ media, url: slot.url }));
+      void withTimeout(resolve, 20000)
+        .then(({ media }) => {
+          if (!videoSlots.has(id)) return;
+          videoSlots.set(id, { url: slot.url, platform: slot.platform, media });
+          win?.webContents.send('stream:media', { id, media });
+          console.log(`[live-matrix] 直连流已刷新: id=${id} ${media.format}`);
+        })
+        .catch((err: unknown) => {
+          win?.webContents.send('stream:error', { id, message: `刷新直播流失败: ${String(err)}` });
+        });
+      return;
+    }
+    const offline = offlineSlots.get(id);
+    if (!offline) return;
+    const recheck =
+      offline.platform === 'bilibili'
+        ? resolveBiliLive(offline.url, sessionFor('bilibili'))
+        : sniffDouyinLive(offline.url, sessionFor('douyin'), win);
+    void withTimeout(recheck, 20000)
+      .then((media) => {
+        if (!offlineSlots.has(id)) return;
+        offlineSlots.delete(id);
+        videoSlots.set(id, { url: offline.url, platform: offline.platform, media });
         win?.webContents.send('stream:media', { id, media });
-        console.log(`[live-matrix] 直连流已刷新: id=${id} ${media.format}`);
+        console.log(`[live-matrix] 未开播格已开播，转直连: id=${id} ${media.format}`);
       })
-      .catch((err) => {
-        win?.webContents.send('stream:error', { id, message: `刷新直播流失败: ${String(err)}` });
+      .catch((err: unknown) => {
+        const message = err instanceof OfflineError ? '仍未开播' : `检测开播状态失败: ${String(err)}`;
+        win?.webContents.send('stream:error', { id, message });
       });
   });
 

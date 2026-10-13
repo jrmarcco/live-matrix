@@ -10,10 +10,20 @@ export interface SlotDesc {
 /** 主进程创建成功后带回 id 的窗口槽位 */
 export interface StreamSlot extends SlotDesc {
   id: number;
-  /** video = 自研播放器直连拉流（B站）；view = 内嵌平台页面（抖音 / B站解析失败回退） */
-  kind: 'video' | 'view';
+  /** video = 自研播放器直连拉流；view = 内嵌平台页面（风控/接口变动等解析失败回退）；
+   *  offline = 直播间未开播占位格（纯 DOM，不加载页面） */
+  kind: 'video' | 'view' | 'offline';
   media?: StreamMedia;
   title?: string;
+}
+
+/** 直播间未开播（解析器抛出；主进程据此创建 offline 占位格，不回退内嵌页面——
+ *  未开播页面常有轮播视频/登录浮层盖住注入的控制按钮，导致窗口关不掉） */
+export class OfflineError extends Error {
+  constructor(message = '直播间未开播') {
+    super(message);
+    this.name = 'OfflineError';
+  }
 }
 
 /** 直连播放的拉流信息（B站） */

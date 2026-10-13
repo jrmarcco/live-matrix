@@ -448,6 +448,24 @@ button {
   }
 }
 
+/* ---------------- 未开播占位格（复用加载格布局，无转圈） ---------------- */
+
+.cell.kind-offline .cell-body {
+  background: #05070b;
+}
+
+.cell-offline .txt {
+  color: #8d97ab;
+  font-size: 14px;
+  letter-spacing: 3px;
+}
+
+.cell-offline .sub {
+  color: #525c6e;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+
 /* 直连格子的右上角按钮 + 右下角刷新按钮（DOM 层，与页内注入按钮同款样式）
  * 玻璃质感小芯片：平时低透明度隐入画面，悬停提亮并轻微上浮
  * 图标为 build/ 下 PNG 内嵌 data URL，黑色图形经 invert 反色为白 */

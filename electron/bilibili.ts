@@ -1,4 +1,5 @@
 import type { Session } from 'electron';
+import { OfflineError } from './types';
 import type { StreamMedia } from './types';
 
 /**
@@ -116,7 +117,8 @@ export async function resolveBiliLive(url: string, ses: Session): Promise<Stream
   if (accept > current) {
     play = await fetchPlay(accept);
   }
-  if (info.live_status !== 1 || play.live_status !== 1) throw new Error('直播间未开播');
+  // 未开播（含轮播视频模式）是确定状态，抛 OfflineError 让上层落「未开播」占位格
+  if (info.live_status !== 1 || play.live_status !== 1) throw new OfflineError('直播间未开播');
   const candidates = pickStreams(play, info.title, realId);
   if (!candidates.length) throw new Error('接口未返回可用流');
   return candidates[0];

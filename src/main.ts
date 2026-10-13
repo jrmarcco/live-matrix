@@ -20,8 +20,8 @@ interface Cell {
   id: number;
   url: string;
   platform: Platform;
-  /** video = 自研播放器直连拉流（B站/抖音）；view = 内嵌平台页面 */
-  kind: 'video' | 'view';
+  /** video = 自研播放器直连拉流（B站/抖音）；view = 内嵌平台页面；offline = 未开播占位格 */
+  kind: 'video' | 'view' | 'offline';
   media?: StreamMedia;
   title?: string;
   error?: string;
@@ -145,6 +145,36 @@ function makeStreamCell(c: StageCell): HTMLElement {
     el.querySelector('.cell-close')!.addEventListener('click', () => {
       const i = cells.findIndex((x) => x.id === c.id);
       if (i >= 0) removeCell(i);
+    });
+    return el;
+  }
+  if (c.kind === 'offline') {
+    // 未开播占位格：居中提示 + 收藏/刷新/关闭按钮（纯 DOM，无直播视图覆盖，
+    // 按钮/双击互换等交互天然可用）；刷新即请主进程重新探测，开播后原地升级为直连格
+    el.className = 'cell kind-offline';
+    el.innerHTML = `
+      <div class="cell-body">
+        <div class="cell-load cell-offline">
+          <span class="txt">未开播</span>
+          <span class="sub">主播开播后点击刷新</span>
+        </div>
+        <button class="cell-fav" type="button" title="收藏此直播">
+          <img class="ic-fav-off" src="${ICONS.favoriteDark}" alt="" draggable="false" />
+          <img class="ic-fav-on" src="${ICONS.favoriteLight}" alt="" draggable="false" />
+        </button>
+        <button class="cell-refresh" type="button" title="刷新直播"><img src="${ICONS.refresh}" alt="" draggable="false" /></button>
+        <button class="cell-close" type="button" title="关闭此直播窗口"><img src="${ICONS.close}" alt="" draggable="false" /></button>
+      </div>`;
+    el.querySelector('.cell-close')!.addEventListener('click', () => {
+      const i = cells.findIndex((x) => x.id === c.id);
+      if (i >= 0) removeCell(i);
+    });
+    el.querySelector('.cell-fav')!.addEventListener('click', () => openFavModal(c));
+    el.querySelector('.cell-refresh')!.addEventListener('click', () => {
+      const cc = cells.find((x) => x.id === c.id);
+      if (!cc || cc.kind !== 'offline') return;
+      setOfflineHint(c.id, '检测中…');
+      window.lm.refreshStream(c.id);
     });
     return el;
   }
@@ -321,6 +351,12 @@ function destroyPlayer(id: number): void {
 
 function setState(id: number, text: string): void {
   const el = stage.querySelector(`.cell[data-id="${id}"] .v-state`);
+  if (el) el.textContent = text;
+}
+
+/** 未开播占位格的主提示文案（未开播 / 检测中… / 仍未开播） */
+function setOfflineHint(id: number, text: string): void {
+  const el = stage.querySelector(`.cell[data-id="${id}"] .cell-offline .txt`);
   if (el) el.textContent = text;
 }
 
@@ -730,17 +766,26 @@ window.lm.onStreamTitle((v) => updateCellDom(v.id, (c) => (c.title = v.title)));
 window.lm.onStreamError((v) =>
   updateCellDom(v.id, (c) => {
     c.error = v.message.slice(0, 60);
-    setState(v.id, c.error);
+    if (c.kind === 'offline') setOfflineHint(v.id, c.error || '未开播');
+    else setState(v.id, c.error);
   }),
 );
 window.lm.onStreamDead((v) => {
   const i = cells.findIndex((c) => c.id === v.id);
   if (i >= 0) removeCell(i);
 });
-// 直连流地址刷新（过期/断线后主进程重新解析下发）
+// 直连流地址刷新（过期/断线后主进程重新解析下发）；未开播格刷新后探测到
+// 开播也走此事件：格子在位升级为直连格（先赋 media，移除旧 DOM 后 render 重建挂播放器）
 window.lm.onStreamMedia((v: StreamMediaEvent) => {
   const c = cells.find((x) => x.id === v.id);
-  if (!c || c.kind !== 'video') return;
+  if (!c || (c.kind !== 'video' && c.kind !== 'offline')) return;
+  if (c.kind === 'offline') {
+    c.kind = 'video';
+    c.media = v.media;
+    stage.querySelector(`.cell[data-id="${v.id}"]`)?.remove();
+    render();
+    return;
+  }
   c.media = v.media;
   const el = stage.querySelector<HTMLElement>(`.cell[data-id="${v.id}"]`);
   if (el) attachPlayer(el, c);
