@@ -41,3 +41,20 @@ export function detectPlatform(raw: string): Platform | null {
   if (host === 'douyin.com' || host.endsWith('.douyin.com')) return 'douyin';
   return null;
 }
+
+/**
+ * 严格校验直播间地址：live.bilibili.com/<房间号> 或 live.douyin.com/<房间号>
+ * （路径首段为纯数字房间号，允许携带查询串，如分享链接的 ?live_from=…）。
+ * 普通网页（如 bilibili 主页）返回 null——界面应友好提示而非打开原始页面。
+ */
+export function detectLiveRoom(raw: string): Platform | null {
+  const normalized = normalizeUrl(raw);
+  if (!normalized) return null;
+  const u = new URL(normalized);
+  const host = u.hostname.toLowerCase();
+  const platform: Platform | undefined =
+    host === 'live.bilibili.com' ? 'bilibili' : host === 'live.douyin.com' ? 'douyin' : undefined;
+  if (!platform) return null;
+  const first = u.pathname.split('/').filter(Boolean)[0] ?? '';
+  return /^\d+$/.test(first) ? platform : null;
+}

@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { resolveBiliLive } from './bilibili';
 import { sniffDouyinLive } from './douyin';
 import { attachEnhancer } from './enhance';
-import { LOGIN_URL, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
+import { LOGIN_URL, detectLiveRoom, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
 import { OfflineError } from './types';
 import type {
   Favorite,
@@ -436,6 +436,19 @@ function createWindow(): void {
               const out = {};
               const modal = document.getElementById('modalBack');
               out.modalInitiallyHidden = modal.classList.contains('hidden');
+              // 普通网页地址（bilibili 主页）：提交后应停留在对话框并给出友好提示，
+              // 不会关闭对话框去打开原始页面
+              document.querySelector('.placeholder').click();
+              await new Promise((res) => setTimeout(res, 150));
+              const badInput = document.getElementById('urlInput');
+              badInput.value = 'https://www.bilibili.com/';
+              badInput.dispatchEvent(new Event('input', { bubbles: true }));
+              document.getElementById('addForm').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+              await new Promise((res) => setTimeout(res, 200));
+              out.webpageRejected = !modal.classList.contains('hidden');
+              out.webpageErr = document.getElementById('addErr').textContent;
+              document.getElementById('cancelBtn').click();
+              await new Promise((res) => setTimeout(res, 150));
               const urls = [
                 'https://live.bilibili.com/1986380859', // 直播中 → B站 API 直连
                 'https://live.douyin.com/531854687617', // 抖音未开播（女流66）→ 捕获 enter 响应判定 → 未开播占位格
@@ -744,6 +757,11 @@ function registerIpc(): void {
 
   ipcMain.handle('stream:add', async (_e, url: unknown, platform: unknown) => {
     if (typeof url !== 'string' || (platform !== 'bilibili' && platform !== 'douyin')) return null;
+    // 兜底：非直播间地址（普通网页）拒绝创建，绝不回退为打开原始页面
+    if (!detectLiveRoom(url)) {
+      console.warn(`[live-matrix] 忽略非直播间地址: ${url}`);
+      return null;
+    }
     return addStream(url, platform);
   });
 

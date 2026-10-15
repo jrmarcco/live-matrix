@@ -1,7 +1,7 @@
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
 import { ICONS } from '../electron/icon-data';
-import { detectPlatform, PLATFORM_LABEL, PLATFORMS } from '../electron/platforms';
+import { detectLiveRoom, detectPlatform, PLATFORM_LABEL, PLATFORMS } from '../electron/platforms';
 import type {
   Favorite,
   InitPayload,
@@ -466,16 +466,20 @@ function closeModal(): void {
 
 function updateHint(value: string): void {
   if (!value.trim()) {
-    platHint.textContent = '支持：哔哩哔哩直播 · 抖音直播';
+    platHint.textContent = '支持哔哩哔哩 / 抖音直播间地址，如 live.bilibili.com/12345678';
     platHint.classList.remove('ok', 'warn');
     return;
   }
-  const p = detectPlatform(value);
-  if (p) {
-    platHint.textContent = `已识别：${PLATFORM_LABEL[p]}（使用其登录状态）`;
+  const room = detectLiveRoom(value);
+  if (room) {
+    platHint.textContent = `已识别：${PLATFORM_LABEL[room]}直播间（使用其登录状态）`;
     platHint.className = 'hint ok';
+  } else if (detectPlatform(value)) {
+    // 平台域名下的普通网页（如 bilibili 主页）：提示而不是放行去打开原始页面
+    platHint.textContent = '这是普通网页，不是直播间地址；请输入形如 live.bilibili.com/12345678 的直播间地址';
+    platHint.className = 'hint warn';
   } else {
-    platHint.textContent = '暂不支持该地址，仅支持 bilibili.com / douyin.com';
+    platHint.textContent = '暂不支持该地址，仅支持 bilibili.com / douyin.com 直播间';
     platHint.className = 'hint warn';
   }
 }
@@ -533,9 +537,12 @@ addForm.addEventListener('submit', (e) => {
     addErr.textContent = '已达上限：1 个主窗口 + 7 个副窗口';
     return;
   }
-  const p = detectPlatform(raw);
+  const p = detectLiveRoom(raw);
   if (!p) {
-    addErr.textContent = '无法识别的地址，目前支持 live.bilibili.com 与 live.douyin.com';
+    // 普通网页（平台域名下）给可操作的提示；其余为无法识别的地址
+    addErr.textContent = detectPlatform(raw)
+      ? '请输入直播间地址（如 live.bilibili.com/12345678），不支持打开普通网页'
+      : '无法识别的地址，目前支持 live.bilibili.com 与 live.douyin.com 直播间';
     return;
   }
   const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -653,6 +660,8 @@ function persistFavOrder(): void {
 
 function addFavoriteToStage(f: Favorite): void {
   if (cells.length >= MAX_CELLS) return;
+  // 历史收藏里可能存有非直播间地址：不放行（不会打开原始页面）
+  if (!detectLiveRoom(f.url)) return;
   // 收藏面板立即收起，加载过程同样由占位格遮罩反馈
   closeFavPanel();
   beginAddStream(f.url, f.platform);
