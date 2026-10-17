@@ -23,7 +23,7 @@
 
 ## 环境要求
 
-- 开发：Node.js ≥ 20.10，pnpm ≥ 10（`npm install -g pnpm` 安装）
+- 开发：Node.js ≥ 22.12（建议 24 LTS），pnpm ≥ 10（`npm install -g pnpm` 安装）
 - 运行：Windows 10+（x64）或 macOS 12+（x64 / Apple Silicon）
 - 打包 macOS 安装包必须在 macOS 上执行（系统限制）
 
@@ -37,6 +37,29 @@ pnpm run dev        # 开发模式（Vite 热更新 + Electron）
 pnpm run build      # 编译主进程 + 打包渲染层到 dist/
 pnpm start          # 构建并以生产模式运行
 ```
+
+### Windows 开发环境注意事项（2026-10 系统更新后的安全策略）
+
+2026 年 10 月中旬的 Windows/Defender 更新（26H2 / KB5127648 一批）后，部分机器会**静默终止从用户可写目录启动的未签名 Electron 二进制**（进程在执行任何应用代码前即退出，退出码 3，无拦截日志），同时 esbuild 在系统 `%TEMP%` 的临时文件会因被安全软件占用而删除失败，导致 `vite build` 报 `remove ...: Access is denied`。项目已内置规避方案：
+
+- `pnpm run sync-electron`（仅 Windows，需管理员/UAC）：把 `node_modules/electron/dist` 复制到受信任目录 `C:\Program Files\lm-electron`；
+- `scripts/electron-run.mjs`（`dev` / `start` / `smoke` 自动使用）：在 Windows 上通过官方变量 `ELECTRON_OVERRIDE_DIST_PATH` 指向上述副本启动 Electron；副本不存在或版本不符时给出提示；
+- `scripts/build.mjs`（`build` / `start` / `smoke` 自动使用）：Windows 上把 `TMP`/`TEMP` 重定向到项目内 `.vite-tmp/`（已加入 `.gitignore`）规避 esbuild 临时文件问题；
+- 升级 `electron` 依赖版本后需重新执行一次 `pnpm run sync-electron`。
+
+### 依赖升级流程
+
+升级依赖时按以下顺序操作：
+
+```bash
+pnpm outdated                 # 查看可升级项
+pnpm up --latest              # 全部升到最新（会同步 lockfile）
+pnpm run sync-electron        # 升级 electron 后必做：刷新 Program Files 受信任副本（Windows）
+pnpm run smoke                # 端到端验证（构建 + 启动 + 布局自检）
+pnpm store prune              # 清理 pnpm store 中的旧版本包
+```
+
+注意事项：`@types/node` 建议与实际运行的 Node 版本对齐（Electron 官方也会声明其依赖的 `@types/node` 大版本），不要盲目追最新大版本。若升级 electron 后发现 `node_modules/electron/dist` 不存在（postinstall 未执行或下载失败），可用代理手动下载对应版本 zip（sha256 与包内 `checksums.json` 比对一致后解压到该目录），或设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 用国内镜像重装。
 
 ## 打包脚本
 

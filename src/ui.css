@@ -262,27 +262,30 @@ button {
   border: 1.5px solid var(--dim);
   border-radius: 1.5px;
   transform: translate(-50%, -50%);
-  transition: border-color 0.15s, width 0.15s, height 0.15s;
+  transition: border-color 0.15s, width 0.15s, height 0.15s, transform 0.15s;
 }
 
-/* 还原状态：两个错位的方框 */
+/* 还原状态：两个交叠的空心方框（Chrome 式，无需阴影技巧） */
 .ic-max.restore {
   width: 8px;
   height: 8px;
-  box-shadow: 3px -3px 0 -1.5px var(--dim), 3px -3px 0 0 var(--dim) inset;
-  border-color: transparent;
-  background: transparent;
+  transform: translate(calc(-50% - 2px), calc(-50% + 2px));
+  /* 前框：中心向左下偏 2px */
 }
 
 .ic-max.restore::after {
   content: '';
   position: absolute;
-  left: -3px;
-  top: 3px;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
   width: 8px;
   height: 8px;
   border: 1.5px solid var(--dim);
   border-radius: 1.5px;
+  transform: translate(-50%, -50%) translate(4px, -4px);
+  /* 后框：叠在前框右上方 */
+  transition: border-color 0.15s;
 }
 
 /* 关闭：旋转 45° 的十字 */
@@ -316,7 +319,8 @@ button {
   background: var(--text);
 }
 
-.wc:hover .ic-max {
+.wc:hover .ic-max,
+.wc:hover .ic-max.restore::after {
   border-color: var(--text);
 }
 
@@ -578,7 +582,8 @@ button {
  * 默认隐藏，仅主槽位（.slot-main）的直连格显示（内嵌格按钮在页内注入）。 */
 .cell-volume {
   position: absolute;
-  bottom: 46px; /* 刷新按钮（底 8px + 高 30px）再留 8px 间距 */
+  bottom: 46px;
+  /* 刷新按钮（底 8px + 高 30px）再留 8px 间距 */
   right: 8px;
   display: none;
   width: 30px;

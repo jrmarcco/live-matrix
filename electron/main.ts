@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, session, WebContentsView } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen, session, WebContentsView } from 'electron';
 import type { MenuItemConstructorOptions, Session } from 'electron';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
@@ -421,10 +421,16 @@ function createWindow(): void {
     }
   });
 
+  // 保持窗口 16:9（标题栏高度不计入比例计算）。
+  // macOS 的最大化（zoom）会遵守该约束导致横向铺满但纵向留空，
+  // 因此最大化期间临时解除约束、还原时重新套用（见下方 maximize/unmaximize 处理）
+  const applyAspect16x9 = () => {
+    if (!win || win.isDestroyed()) return;
+    const tbh = Math.max(0, win.getBounds().height - win.getContentBounds().height);
+    win.setAspectRatio(16 / 9, { width: 0, height: tbh });
+  };
   win.once('ready-to-show', () => {
-    // 保持窗口 16:9（标题栏高度不计入比例计算）
-    const tbh = Math.max(0, (win?.getBounds().height ?? 0) - (win?.getContentBounds().height ?? 0));
-    win?.setAspectRatio(16 / 9, { width: 0, height: tbh });
+    applyAspect16x9();
     win?.show();
     if (process.argv.includes('--lm-smoke')) {
       // 冒烟模式：截图后自动退出，用于 CI 验证可启动与布局
@@ -718,8 +724,29 @@ function createWindow(): void {
   const sendMax = () => {
     if (win && !win.isDestroyed()) win.webContents.send('win:maximized', win.isMaximized());
   };
-  win.on('maximize', sendMax);
-  win.on('unmaximize', sendMax);
+  // macOS：zoom 会按 16:9 约束计算目标尺寸，纵向铺不满——
+  // 最大化时解除约束，若已被约束成非全尺寸则补齐到工作区；还原时恢复 16:9。
+  // Windows 的最大化本就不受 aspect 约束，保持原行为。
+  win.on('maximize', () => {
+    if (process.platform === 'darwin' && win && !win.isDestroyed()) {
+      win.setAspectRatio(0);
+      const wa = screen.getDisplayMatching(win.getBounds()).workArea;
+      const b = win.getBounds();
+      if (
+        Math.abs(b.x - wa.x) > 1 ||
+        Math.abs(b.y - wa.y) > 1 ||
+        Math.abs(b.width - wa.width) > 1 ||
+        Math.abs(b.height - wa.height) > 1
+      ) {
+        win.setBounds(wa);
+      }
+    }
+    sendMax();
+  });
+  win.on('unmaximize', () => {
+    if (process.platform === 'darwin') applyAspect16x9();
+    sendMax();
+  });
   // UI 渲染进程崩溃时重载界面，避免整窗无响应
   win.webContents.on('render-process-gone', (_e, details) => {
     console.error('[live-matrix] UI 渲染进程异常:', details.reason);
@@ -967,7 +994,11 @@ function registerIpc(): void {
   ipcMain.on('win:max', () => {
     if (!win || win.isDestroyed()) return;
     if (win.isMaximized()) win.unmaximize();
-    else win.maximize();
+    else {
+      // macOS：先解除 16:9 约束再最大化，避免 zoom 按约束计算出纵向不足的尺寸
+      if (process.platform === 'darwin') win.setAspectRatio(0);
+      win.maximize();
+    }
   });
   ipcMain.on('win:close', () => win?.close());
 

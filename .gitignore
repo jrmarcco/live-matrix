@@ -27,6 +27,8 @@
 node_modules/
 dist/
 release/
+.vite-tmp/
+.tmp-esbuild/
 /.pnp
 .pnp.*
 .yarn/*
