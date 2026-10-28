@@ -3,7 +3,7 @@ import { dom } from './dom';
 import { openFavModal, renderFavList } from './favorites';
 import { syncVideoAudio, updateVolumeControls } from './layout';
 import { renderChips } from './login-chips';
-import { attachPlayer } from './player';
+import { attachPlayer, consumeSilentRecovery, isSilentRecovery } from './player';
 import { removeCell, render, setFocusMode, setOfflineHint, setState, updateFavStates } from './stage';
 import { state, type Cell } from './state';
 
@@ -42,7 +42,8 @@ window.lm.onStreamError((v) =>
   updateCellDom(v.id, (c) => {
     c.error = v.message.slice(0, 60);
     if (c.kind === 'offline') setOfflineHint(v.id, c.error || '未开播');
-    else setState(v.id, c.error);
+    // 静默自动恢复中的瞬态失败不显示文案（看门狗会继续重试），避免打扰用户
+    else if (!isSilentRecovery(v.id)) setState(v.id, c.error);
   }),
 );
 window.lm.onStreamDead((v) => {
@@ -75,7 +76,9 @@ window.lm.onStreamMedia((v: StreamMediaEvent) => {
   }
   c.media = v.media;
   const el = dom.stage.querySelector<HTMLElement>(`.cell[data-id="${v.id}"]`);
-  if (el) attachPlayer(el, c);
+  // 静默恢复：看门狗/播放器错误触发的刷新不显示「载入中…」等过程文案
+  const silent = consumeSilentRecovery(v.id);
+  if (el) attachPlayer(el, c, silent);
 });
 // 内嵌格页内星标点击 → 弹出别名输入
 window.lm.onStreamFavorite((v) => {

@@ -14,6 +14,29 @@ interface PlayerHandle {
 const players = new Map<number, PlayerHandle>();
 const refreshTimers = new Map<number, number>();
 
+/**
+ * 静默自动恢复标记：看门狗/播放器致命错误触发的刷新对用户无感知——
+ * 全链路（重解析 → stream:media → 重建播放器）不显示任何过程文案，
+ * 仅 console 留痕；恢复成功或播放器销毁时清除。
+ * 用户手动刷新不走此标记，保留「刷新中…」等可见反馈。
+ */
+const silentRecovery = new Set<number>();
+
+export function markSilentRecovery(id: number): void {
+  silentRecovery.add(id);
+}
+
+export function isSilentRecovery(id: number): boolean {
+  return silentRecovery.has(id);
+}
+
+/** 恢复成功（收到新流）时取走并清除静默标记 */
+export function consumeSilentRecovery(id: number): boolean {
+  const has = silentRecovery.has(id);
+  silentRecovery.delete(id);
+  return has;
+}
+
 export function destroyPlayer(id: number): void {
   const t = refreshTimers.get(id);
   if (t) {
@@ -21,6 +44,7 @@ export function destroyPlayer(id: number): void {
     refreshTimers.delete(id);
   }
   watchdog.delete(id);
+  silentRecovery.delete(id);
   const p = players.get(id);
   players.delete(id);
   try {
@@ -44,11 +68,11 @@ export function getPlayerIds(): number[] {
   return [...players.keys()];
 }
 
-export function attachPlayer(cellEl: HTMLElement, c: Cell): void {
+export function attachPlayer(cellEl: HTMLElement, c: Cell, silent = false): void {
   destroyPlayer(c.id);
   const video = cellEl.querySelector('video');
   if (!video || !c.media) return;
-  setState(c.id, '载入中…');
+  if (!silent) setState(c.id, '载入中…');
   video.addEventListener(
     'playing',
     () => {
@@ -71,6 +95,7 @@ export function attachPlayer(cellEl: HTMLElement, c: Cell): void {
     );
     player.on(mpegts.Events.ERROR, () => {
       destroyPlayer(c.id);
+      markSilentRecovery(c.id);
       scheduleRefresh(c.id);
     });
     player.attachMediaElement(video);
@@ -96,6 +121,7 @@ export function attachPlayer(cellEl: HTMLElement, c: Cell): void {
     hls.on(Hls.Events.ERROR, (_e, data) => {
       if (!data.fatal) return;
       destroyPlayer(c.id);
+      markSilentRecovery(c.id);
       scheduleRefresh(c.id);
     });
     players.set(c.id, { video, destroy: () => hls.destroy() });
@@ -126,7 +152,6 @@ export function scheduleRefresh(id: number): void {
       refreshTimers.delete(id);
       const c = state.cells.find((x) => x.id === id);
       if (!c || c.kind !== 'video') return;
-      setState(id, '线路刷新中…');
       window.lm.refreshStream(id);
     }, 3000),
   );
@@ -137,7 +162,8 @@ export function scheduleRefresh(id: number): void {
  * （CDN 停止喂数 / 流悄悄断开 / 主播下播停在最后一帧），没有任何错误回调。
  * 看门狗周期检查每个 <video> 的 currentTime 是否仍在推进，停滞足够久或已 ended
  * 时自动走 scheduleRefresh → 主进程重新解析 → stream:media 重建播放器，
- * 全程无需手动点击。 */
+ * 全程无需手动点击，且对用户无感知：不显示任何过程文案（仅 console 留痕），
+ * 恢复期间画面停在最后一帧，直到新流接上或主播下播转入统一的未开播页。 */
 
 interface WatchEntry {
   /** 上次检测时的播放位置（<0 表示尚无基线） */
@@ -150,8 +176,8 @@ interface WatchEntry {
 
 const watchdog = new Map<number, WatchEntry>();
 /** 检测周期 */
-const WATCHDOG_INTERVAL_MS = 5000;
-/** 连续 N 次检测 currentTime 未推进（约 10s）判定卡住；取 2 避免短暂缓冲误报 */
+const WATCHDOG_INTERVAL_MS = 4000;
+/** 连续 N 次检测 currentTime 未推进判定卡住；取 2 避免短暂缓冲误报 */
 const STALL_CONFIRM_TICKS = 2;
 /** 同一格子两次自动刷新的最小间隔（也决定主播下播后的重连节奏） */
 const AUTO_REFRESH_COOLDOWN_MS = 30_000;
@@ -160,7 +186,7 @@ function triggerAutoRefresh(id: number, entry: WatchEntry, text: string): void {
   entry.lastTrigger = Date.now();
   entry.stalledChecks = 0;
   entry.lastTime = -1; // 丢弃旧基线，等重建后的下一轮重新采样
-  setState(id, text);
+  markSilentRecovery(id); // 自动恢复对用户无感知：全链路不显示过程文案
   scheduleRefresh(id);
   console.log(`[lm-player] 看门狗自动刷新: id=${id} ${text}`);
 }
