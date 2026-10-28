@@ -148,11 +148,7 @@ function mountVolumeControl(): void {
     e.stopImmediatePropagation();
     // 静音态点击 → 恢复（音量为 0 时给个默认值）；有声态点击 → 静音
     const silent = vol.muted || vol.volume === 0;
-    ipcRenderer.send(
-      'stream:volume-self',
-      silent ? (vol.volume > 0 ? vol.volume : 0.6) : vol.volume,
-      !silent,
-    );
+    ipcRenderer.send('stream:volume-self', silent ? (vol.volume > 0 ? vol.volume : 0.6) : vol.volume, !silent);
   });
   document.body.appendChild(btn);
   paintOverlayState();
@@ -176,16 +172,13 @@ function applyPageVolume(): void {
   });
 }
 
-ipcRenderer.on(
-  'lm-state',
-  (_e, s: { isMain?: unknown; volume?: unknown; muted?: unknown }) => {
-    if (typeof s?.volume === 'number') vol.volume = s.volume;
-    if (typeof s?.muted === 'boolean') vol.muted = s.muted;
-    vol.isMain = !!s?.isMain;
-    paintOverlayState();
-    applyPageVolume();
-  },
-);
+ipcRenderer.on('lm-state', (_e, s: { isMain?: unknown; volume?: unknown; muted?: unknown }) => {
+  if (typeof s?.volume === 'number') vol.volume = s.volume;
+  if (typeof s?.muted === 'boolean') vol.muted = s.muted;
+  vol.isMain = !!s?.isMain;
+  paintOverlayState();
+  applyPageVolume();
+});
 ipcRenderer.on('lm-volume', (_e, s: { volume?: unknown; muted?: unknown }) => {
   if (typeof s?.volume === 'number') vol.volume = s.volume;
   if (typeof s?.muted === 'boolean') vol.muted = s.muted;

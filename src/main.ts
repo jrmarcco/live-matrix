@@ -236,8 +236,7 @@ function makeSubPlaceholder(): HTMLElement {
 function makeMainPlaceholder(): HTMLElement {
   const el = document.createElement('section');
   el.className = 'cell placeholder slot-main';
-  el.innerHTML =
-    '<div class="ph-inner"><span class="ph-plus">◧</span><span>主窗口</span></div>';
+  el.innerHTML = '<div class="ph-inner"><span class="ph-plus">◧</span><span>主窗口</span></div>';
   el.addEventListener('click', openModal);
   return el;
 }
@@ -257,7 +256,6 @@ function render(): void {
       let el = existing.get(c.id);
       if (!el) el = makeStreamCell(c);
       el.classList.toggle('slot-main', i === 0);
-      '';
       stage.appendChild(el);
     });
   }
@@ -266,8 +264,9 @@ function render(): void {
   for (let i = subs; i < 7; i++) {
     stage.appendChild(makeSubPlaceholder());
   }
-  // 格子已被移除的播放器随之销毁
-  for (const id of [...players.keys()]) {
+  // 格子已被移除的播放器随之销毁（先快照：destroyPlayer 会从 players 删项）
+  const playerIds = [...players.keys()];
+  for (const id of playerIds) {
     if (!stage.querySelector(`.cell[data-id="${id}"]`)) destroyPlayer(id);
   }
   updateFavStates();

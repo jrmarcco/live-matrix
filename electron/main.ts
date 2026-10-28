@@ -97,15 +97,18 @@ function sessionFor(p: Platform): Session {
   return ses;
 }
 
+/** 判断 cookie 列表中是否存在指定域名后缀的 cookie */
+function matchDomain(list: Electron.Cookie[], domain: string): boolean {
+  return list.some((c) => (c.domain ?? '').endsWith(domain));
+}
+
 async function isLoggedIn(p: Platform): Promise<boolean> {
   const ses = session.fromPartition(partitionFor(p));
-  const match = (list: Electron.Cookie[], domain: string) =>
-    list.some((c) => (c.domain ?? '').endsWith(domain));
   if (p === 'bilibili') {
-    return match(await ses.cookies.get({ name: 'SESSDATA' }), 'bilibili.com');
+    return matchDomain(await ses.cookies.get({ name: 'SESSDATA' }), 'bilibili.com');
   }
-  if (match(await ses.cookies.get({ name: 'sessionid_ss' }), 'douyin.com')) return true;
-  return match(await ses.cookies.get({ name: 'sessionid' }), 'douyin.com');
+  if (matchDomain(await ses.cookies.get({ name: 'sessionid_ss' }), 'douyin.com')) return true;
+  return matchDomain(await ses.cookies.get({ name: 'sessionid' }), 'douyin.com');
 }
 
 async function pushLogin(p: Platform): Promise<void> {
@@ -124,7 +127,10 @@ async function pushLogin(p: Platform): Promise<void> {
 function scheduleLoginCheck(p: Platform): void {
   const prev = loginCheckTimers.get(p);
   if (prev) clearTimeout(prev);
-  loginCheckTimers.set(p, setTimeout(() => void pushLogin(p), 700));
+  loginCheckTimers.set(
+    p,
+    setTimeout(() => void pushLogin(p), 700),
+  );
 }
 
 function addViewStream(url: string, platform: Platform): StreamSlot | null {
@@ -158,7 +164,7 @@ function addViewStream(url: string, platform: Platform): StreamSlot | null {
   attachEnhancer(view.webContents, platform);
   // index 0：插到子视图栈底，保证 UI 层之上按槽位叠放
   win.contentView.addChildView(view, 0);
-  void view.webContents.loadURL(url).catch(() => { });
+  void view.webContents.loadURL(url).catch(() => {});
   views.set(id, { view, url, platform });
   return { id, url, platform, kind: 'view' };
 }
@@ -231,9 +237,7 @@ function getFavorites(): Favorite[] {
     try {
       const raw = JSON.parse(fs.readFileSync(favoritesPath(), 'utf8')) as { items?: Favorite[] };
       if (Array.isArray(raw.items)) {
-        favoritesCache = raw.items.filter(
-          (f) => f && typeof f.url === 'string' && typeof f.alias === 'string',
-        );
+        favoritesCache = raw.items.filter((f) => f && typeof f.url === 'string' && typeof f.alias === 'string');
       }
     } catch {
       /* 文件不存在或损坏则从空列表开始 */
@@ -245,11 +249,7 @@ function getFavorites(): Favorite[] {
 function saveFavorites(): void {
   try {
     fs.mkdirSync(path.dirname(favoritesPath()), { recursive: true });
-    fs.writeFileSync(
-      favoritesPath(),
-      JSON.stringify({ version: 1, items: getFavorites() }, null, 2),
-      'utf8',
-    );
+    fs.writeFileSync(favoritesPath(), JSON.stringify({ version: 1, items: getFavorites() }, null, 2), 'utf8');
   } catch (err) {
     console.error('[live-matrix] 保存收藏失败:', err);
   }
@@ -340,7 +340,7 @@ function openLogin(p: Platform): void {
     loginWindows.delete(p);
     scheduleLoginCheck(p);
   });
-  void lw.loadURL(LOGIN_URL[p]).catch(() => { });
+  void lw.loadURL(LOGIN_URL[p]).catch(() => {});
 }
 
 function waitForDevServer(url: string, timeoutMs = 30000): Promise<void> {
@@ -642,9 +642,7 @@ function createWindow(): void {
         }
         // 直连槽位信息
         for (const [id, s] of videoSlots) {
-          console.log(
-            `[live-matrix] diag direct=${id} src=${s.url} fmt=${s.media.format} qn=${s.media.qn ?? '?'}`,
-          );
+          console.log(`[live-matrix] diag direct=${id} src=${s.url} fmt=${s.media.format} qn=${s.media.qn ?? '?'}`);
         }
         // 主进程侧诊断：每个直播视图的 bounds 与页面内播放器几何
         for (const [id, e] of views) {
@@ -684,14 +682,10 @@ function createWindow(): void {
               3000,
             );
             if (!hasBtn) continue;
-            await e.view.webContents.executeJavaScript(
-              `document.getElementById('lm-refresh-x').click()`,
-            );
+            await e.view.webContents.executeJavaScript(`document.getElementById('lm-refresh-x').click()`);
             await new Promise((res) => setTimeout(res, 1500));
             const navType = await withTimeout(
-              e.view.webContents.executeJavaScript(
-                `(performance.getEntriesByType('navigation')[0] || {}).type || ''`,
-              ),
+              e.view.webContents.executeJavaScript(`(performance.getEntriesByType('navigation')[0] || {}).type || ''`),
               3000,
             );
             console.log(`[live-matrix] view刷新按钮 id=${id} navType=${navType}`);
@@ -716,7 +710,7 @@ function createWindow(): void {
   win.on('closed', () => {
     win = null;
     // 主窗口已关：登录子窗口一并带走，否则 window-all-closed 会等它们而进程驻留
-    for (const lw of [...loginWindows.values()]) {
+    for (const lw of loginWindows.values()) {
       if (!lw.isDestroyed()) lw.destroy();
     }
     loginWindows.clear();
@@ -767,9 +761,12 @@ function createWindow(): void {
 function registerIpc(): void {
   ipcMain.on('ui:ready', () => {
     // Map 保持插入顺序，即槽位顺序（第一个为主窗口）
-    const slots: StreamSlot[] = [
-      ...views.entries(),
-    ].map(([id, e]) => ({ id, url: e.url, platform: e.platform, kind: 'view' as const }));
+    const slots: StreamSlot[] = [...views.entries()].map(([id, e]) => ({
+      id,
+      url: e.url,
+      platform: e.platform,
+      kind: 'view' as const,
+    }));
     for (const [id, s] of videoSlots) {
       slots.push({ id, url: s.url, platform: s.platform, kind: 'video', media: s.media });
     }
@@ -1036,9 +1033,7 @@ function installMenu(): void {
   // macOS：首个菜单即应用程序菜单，补上退出项（Cmd+Q）——自定义菜单会整体
   // 覆盖默认菜单，不提供的话应用没有任何键盘退出入口
   const template: MenuItemConstructorOptions[] =
-    process.platform === 'darwin'
-      ? [{ label: app.name, submenu: [{ role: 'quit', label: '退出' }] }, edit]
-      : [edit];
+    process.platform === 'darwin' ? [{ label: app.name, submenu: [{ role: 'quit', label: '退出' }] }, edit] : [edit];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 

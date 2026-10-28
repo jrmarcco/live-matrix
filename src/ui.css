@@ -29,8 +29,7 @@ body {
   flex-direction: column;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Segoe UI',
-    system-ui, sans-serif;
+  font-family: -apple-system, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Segoe UI', system-ui, sans-serif;
   font-size: 14px;
   overflow: hidden;
   user-select: none;
@@ -105,7 +104,9 @@ button {
   color: var(--text);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 /* 平台图标替代文字标签（B站粉 / TikTok 浅白，均为亮色原图） */
@@ -164,7 +165,9 @@ button {
   color: var(--text);
   font-size: 13px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 #favBtn:hover {
@@ -189,7 +192,9 @@ button {
   color: #fff;
   font-size: 13.5px;
   cursor: pointer;
-  transition: filter 0.15s, transform 0.05s;
+  transition:
+    filter 0.15s,
+    transform 0.05s;
 }
 
 .primary:hover:not(:disabled) {
@@ -214,7 +219,9 @@ button {
   color: var(--text);
   font-size: 13.5px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .ghost:hover {
@@ -262,7 +269,11 @@ button {
   border: 1.5px solid var(--dim);
   border-radius: 1.5px;
   transform: translate(-50%, -50%);
-  transition: border-color 0.15s, width 0.15s, height 0.15s, transform 0.15s;
+  transition:
+    border-color 0.15s,
+    width 0.15s,
+    height 0.15s,
+    transform 0.15s;
 }
 
 /* 还原状态：两个交叠的空心方框（Chrome 式，无需阴影技巧） */
@@ -493,7 +504,11 @@ button {
   line-height: 1;
   cursor: pointer;
   opacity: 0.4;
-  transition: opacity 0.18s, background 0.18s, transform 0.18s, filter 0.18s;
+  transition:
+    opacity 0.18s,
+    background 0.18s,
+    transform 0.18s,
+    filter 0.18s;
 }
 
 .cell-close img,
@@ -597,7 +612,10 @@ button {
   -webkit-backdrop-filter: blur(6px);
   cursor: pointer;
   opacity: 0.4;
-  transition: opacity 0.18s, background 0.18s, transform 0.18s;
+  transition:
+    opacity 0.18s,
+    background 0.18s,
+    transform 0.18s;
 }
 
 .cell.slot-main .cell-volume {
@@ -785,7 +803,9 @@ button {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .placeholder:hover {
@@ -813,7 +833,9 @@ button {
   border: 1px dashed #333d50;
   font-size: 18px;
   color: #3d4657;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .placeholder:hover .ph-plus {
@@ -883,7 +905,9 @@ button {
   color: var(--text);
   font-size: 13.5px;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .modal input:focus {

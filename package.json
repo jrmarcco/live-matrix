@@ -11,6 +11,10 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "lint": "oxlint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky",
     "build": "node scripts/build.mjs",
     "start": "pnpm run build && node scripts/electron-run.mjs .",
     "dev": "tsc -p tsconfig.electron.json && concurrently -k -n vite,electron -c blue,green \"vite\" \"cross-env LM_DEV=1 node scripts/electron-run.mjs .\"",
@@ -27,6 +31,9 @@
     "cross-env": "^10.1.0",
     "electron": "^44.8.0",
     "electron-builder": "^26.15.3",
+    "husky": "^9.1.7",
+    "oxlint": "^1.90.0",
+    "prettier": "^3.9.10",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"

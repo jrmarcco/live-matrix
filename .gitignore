@@ -63,3 +63,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# husky 内部文件（.husky/pre-commit 等钩子脚本本身需要提交）
+.husky/_/

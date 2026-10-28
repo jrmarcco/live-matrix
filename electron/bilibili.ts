@@ -70,6 +70,12 @@ async function biliApi<T>(ses: Session, url: string): Promise<T> {
   return j.data;
 }
 
+/** 播放方式排序权重：HTTP-FLV 最优先，其次 fMP4-HLS，最后 TS-HLS */
+function streamRank(m: StreamMedia): number {
+  if (m.format === 'flv') return 0;
+  return m.url.includes('fmp4') || m.url.includes('index.m3u8') ? 1 : 2;
+}
+
 /** 按播放器能力挑流：HTTP-FLV（mpegts.js，延迟最低）> fMP4-HLS > TS-HLS（hls.js） */
 function pickStreams(play: PlayUrlData, title: string, roomId: number): StreamMedia[] {
   const out: StreamMedia[] = [];
@@ -86,26 +92,19 @@ function pickStreams(play: PlayUrlData, title: string, roomId: number): StreamMe
       }
     }
   }
-  const rank = (m: StreamMedia): number => {
-    if (m.format === 'flv') return 0;
-    return m.url.includes('fmp4') || m.url.includes('index.m3u8') ? 1 : 2;
-  };
-  return out.sort((a, b) => rank(a) - rank(b));
+  return out.toSorted((a, b) => streamRank(a) - streamRank(b));
 }
 
 export async function resolveBiliLive(url: string, ses: Session): Promise<StreamMedia> {
   const roomId = parseRoomId(url);
   if (!roomId) throw new Error('无法从地址解析房间号');
-  const info = await biliApi<GetInfoData>(
-    ses,
-    `https://api.live.bilibili.com/room/v1/Room/get_info?room_id=${roomId}`,
-  );
+  const info = await biliApi<GetInfoData>(ses, `https://api.live.bilibili.com/room/v1/Room/get_info?room_id=${roomId}`);
   const realId = info.room_id || roomId;
   const fetchPlay = (qn: number) =>
     biliApi<PlayUrlData>(
       ses,
       `https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo` +
-      `?room_id=${realId}&protocol=0,1&format=0,1,2&codec=0,1&qn=${qn}&platform=web&ptype=8`,
+        `?room_id=${realId}&protocol=0,1&format=0,1,2&codec=0,1&qn=${qn}&platform=web&ptype=8`,
     );
   let play = await fetchPlay(0);
   // qn=0 为「默认画质」，实测通常即最高档；若返回档位低于可选最高档，显式用最高档重取

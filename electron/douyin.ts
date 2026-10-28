@@ -63,13 +63,13 @@ function parseEnterResponse(raw: string, fallbackTitle: string): StreamMedia | n
   }
   const title = (room?.title || fallbackTitle || '').slice(0, 60);
   if (flvKeys.length) {
-    const best = flvKeys.sort((a, b) => qualityRank(b) - qualityRank(a))[0];
+    const best = flvKeys.toSorted((a, b) => qualityRank(b) - qualityRank(a))[0];
     return { url: flv[best], format: 'flv', title };
   }
   const hlsMap = su?.hls_pull_url_map ?? {};
   const hlsKeys = Object.keys(hlsMap);
   if (hlsKeys.length) {
-    const best = hlsKeys.sort((a, b) => qualityRank(b) - qualityRank(a))[0];
+    const best = hlsKeys.toSorted((a, b) => qualityRank(b) - qualityRank(a))[0];
     return { url: hlsMap[best], format: 'hls', title };
   }
   if (su?.hls_pull_url) return { url: su.hls_pull_url, format: 'hls', title };
@@ -83,11 +83,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * 未开播抛 OfflineError（调用方落「未开播」占位格）；其余失败（页面崩溃/
  * 登录墙/风控）抛错，由调用方回退内嵌页面模式。
  */
-export async function sniffDouyinLive(
-  url: string,
-  ses: Session,
-  win: BrowserWindow,
-): Promise<StreamMedia> {
+export async function sniffDouyinLive(url: string, ses: Session, win: BrowserWindow): Promise<StreamMedia> {
   let title = '';
   let dead = false;
   /** 捕获到的 enter 响应体（主进程侧变量，轮询无需进渲染进程） */
@@ -185,7 +181,7 @@ export async function sniffDouyinLive(
         dbg.detach();
       } catch {
         /* 可能已随视图销毁 */
-      };
+      }
     }
     try {
       win.contentView.removeChildView(view);

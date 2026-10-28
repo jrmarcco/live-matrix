@@ -55,6 +55,6 @@ export function detectLiveRoom(raw: string): Platform | null {
   const platform: Platform | undefined =
     host === 'live.bilibili.com' ? 'bilibili' : host === 'live.douyin.com' ? 'douyin' : undefined;
   if (!platform) return null;
-  const first = u.pathname.split('/').filter(Boolean)[0] ?? '';
+  const first = u.pathname.split('/').find(Boolean) ?? '';
   return /^\d+$/.test(first) ? platform : null;
 }

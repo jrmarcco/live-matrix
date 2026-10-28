@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration-schema.json",
+  "ignorePatterns": [
+    "dist",
+    "release",
+    "node_modules",
+    ".vite-tmp",
+    "build",
+    "coverage",
+    "electron/icon-data.ts",
+    "src/shared/lib/icons.ts"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "eslint/no-await-in-loop": "off"
+  },
+  "overrides": [
+    {
+      "files": ["**/*.d.ts"],
+      "rules": {
+        "unicorn/require-module-specifiers": "off"
+      }
+    }
+  ]
+}
