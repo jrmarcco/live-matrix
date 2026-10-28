@@ -15,5 +15,6 @@
     "rootDir": ".",
     "outDir": "dist"
   },
-  "include": ["electron/**/*", "src/shared/**/*"]
+  "include": ["electron/**/*", "src/shared/**/*"],
+  "exclude": ["electron/**/*.test.ts", "src/shared/**/*.test.ts"]
 }

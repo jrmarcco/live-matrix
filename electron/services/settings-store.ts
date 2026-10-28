@@ -1,7 +1,7 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { app } from 'electron';
 import type { VolumeState } from '../../src/shared/types/ipc';
+import { readJsonFile, writeJsonFile } from '../../src/shared/lib/json-file';
 
 /* ---------------- 主窗口音量（跨启动持久化，userData/settings.json） ---------------- */
 
@@ -10,25 +10,18 @@ function settingsPath(): string {
 }
 
 export const settings: VolumeState = { volume: 1, muted: false };
-try {
-  const raw = JSON.parse(fs.readFileSync(settingsPath(), 'utf8')) as Partial<VolumeState>;
-  if (typeof raw.volume === 'number' && Number.isFinite(raw.volume)) {
-    settings.volume = Math.min(1, Math.max(0, raw.volume));
+const saved = readJsonFile<Partial<VolumeState>>(settingsPath());
+if (saved) {
+  if (typeof saved.volume === 'number' && Number.isFinite(saved.volume)) {
+    settings.volume = Math.min(1, Math.max(0, saved.volume));
   }
-  if (typeof raw.muted === 'boolean') settings.muted = raw.muted;
-} catch {
-  /* 文件不存在或损坏则用默认值 */
+  if (typeof saved.muted === 'boolean') settings.muted = saved.muted;
 }
 
 let saveSettingsTimer: NodeJS.Timeout | null = null;
 
 function writeSettings(): void {
-  try {
-    fs.mkdirSync(path.dirname(settingsPath()), { recursive: true });
-    fs.writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[live-matrix] 保存设置失败:', err);
-  }
+  writeJsonFile(settingsPath(), settings);
 }
 
 /** 滑杆拖动会高频触发，防抖后再落盘 */

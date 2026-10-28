@@ -14,6 +14,7 @@
     "lint": "oxlint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "test": "vitest run",
     "prepare": "husky",
     "build": "node scripts/build.mjs",
     "start": "pnpm run build && node scripts/electron-run.mjs .",
@@ -36,7 +37,8 @@
     "prettier": "^3.9.10",
     "sharp": "^0.35.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "hls.js": "^1.7.3",

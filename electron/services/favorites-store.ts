@@ -1,7 +1,7 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { app } from 'electron';
 import type { Favorite, FavoriteSaveRequest } from '../../src/shared/types/ipc';
+import { readJsonFile, writeJsonFile } from '../../src/shared/lib/json-file';
 import { getWin } from '../windows';
 
 /* ---------------- 收藏夹（跨启动持久化，userData/favorites.json，与窗口会话无关） ---------------- */
@@ -15,25 +15,16 @@ let favoritesCache: Favorite[] | null = null;
 export function getFavorites(): Favorite[] {
   if (!favoritesCache) {
     favoritesCache = [];
-    try {
-      const raw = JSON.parse(fs.readFileSync(favoritesPath(), 'utf8')) as { items?: Favorite[] };
-      if (Array.isArray(raw.items)) {
-        favoritesCache = raw.items.filter((f) => f && typeof f.url === 'string' && typeof f.alias === 'string');
-      }
-    } catch {
-      /* 文件不存在或损坏则从空列表开始 */
+    const raw = readJsonFile<{ items?: Favorite[] }>(favoritesPath());
+    if (raw && Array.isArray(raw.items)) {
+      favoritesCache = raw.items.filter((f) => f && typeof f.url === 'string' && typeof f.alias === 'string');
     }
   }
   return favoritesCache;
 }
 
 function saveFavorites(): void {
-  try {
-    fs.mkdirSync(path.dirname(favoritesPath()), { recursive: true });
-    fs.writeFileSync(favoritesPath(), JSON.stringify({ version: 1, items: getFavorites() }, null, 2), 'utf8');
-  } catch (err) {
-    console.error('[live-matrix] 保存收藏失败:', err);
-  }
+  writeJsonFile(favoritesPath(), { version: 1, items: getFavorites() });
 }
 
 export function pushFavorites(): void {
