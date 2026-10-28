@@ -184,7 +184,7 @@ export function refreshStream(id: number): void {
       console.log(`[live-matrix] 未开播格已开播，转直连: id=${id} ${media.format}`);
     })
     .catch((err: unknown) => {
-      const message = err instanceof OfflineError ? '仍未开播' : `检测开播状态失败: ${String(err)}`;
+      const message = err instanceof OfflineError ? '未开播' : `检测开播状态失败: ${String(err)}`;
       getWin()?.webContents.send('stream:error', { id, message });
     });
 }

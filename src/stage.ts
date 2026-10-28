@@ -208,7 +208,7 @@ export function setState(id: number, text: string): void {
   if (el) el.textContent = text;
 }
 
-/** 未开播占位格的主提示文案（未开播 / 检测中… / 仍未开播） */
+/** 未开播占位格的主提示文案（未开播 / 检测中… / 已下播） */
 export function setOfflineHint(id: number, text: string): void {
   const el = dom.stage.querySelector(`.cell[data-id="${id}"] .cell-offline .txt`);
   if (el) el.textContent = text;
