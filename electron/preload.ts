@@ -14,6 +14,7 @@ import type {
   StreamErrorEvent,
   StreamFavoriteEvent,
   StreamMediaEvent,
+  StreamOfflineEvent,
   StreamSlot,
   StreamTitleEvent,
   VolumeState,
@@ -87,6 +88,10 @@ const api = {
   },
   onStreamDead: (cb: (v: StreamDeadEvent) => void) => {
     ipcRenderer.on('stream:dead', (_e, v) => cb(v));
+  },
+  /** 直连格刷新发现主播已下播：主进程已降级槽位，渲染层换统一的未开播占位页 */
+  onStreamOffline: (cb: (v: StreamOfflineEvent) => void) => {
+    ipcRenderer.on('stream:offline', (_e, v) => cb(v));
   },
   /** 直播视图内双击：副窗口与主窗口互换 / 主窗口铺满还原 */
   onStreamDblClick: (cb: (v: StreamDblClickEvent) => void) => {
