@@ -17,6 +17,11 @@ const MAP = {
   bilibili: 'bilibili.png',
   tiktok: 'tiktok-light.png',
   star: 'star.png',
+  folder: 'folder.png',
+  import: 'import.png',
+  export: 'export.png',
+  edit: 'edit.png',
+  delete: 'delete.png',
 };
 
 const root = path.join(import.meta.dirname, '..');

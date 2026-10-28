@@ -697,9 +697,17 @@ button {
   cursor: pointer;
 }
 
-.fav-head button svg {
+.fav-head button img {
   width: 15px;
   height: 15px;
+  display: block;
+  pointer-events: none;
+}
+
+/* 黑色图标反色为白（与格子按钮同一约定）；彩色图标（edit 橙黄 / delete 红）原色显示，同金色星标不反色的惯例 */
+.fav-head button img,
+.fav-item .fav-del img {
+  filter: invert(1);
 }
 
 .fav-head button:hover {
@@ -865,10 +873,12 @@ button {
   color: var(--dim);
 }
 
-.fav-group .g-op svg,
-.fav-item .fav-del svg {
+.fav-group .g-op img,
+.fav-item .fav-del img {
   width: 13px;
   height: 13px;
+  display: block;
+  pointer-events: none;
 }
 
 .fav-group .g-op:hover {
