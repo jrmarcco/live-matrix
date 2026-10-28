@@ -20,7 +20,10 @@
 **/example/
 
 .idea
-.vscode
+# VSCode：目录整体忽略，但共享的编辑器约定（格式化器/换行）随仓库走
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
 .zcode
 
 # 前端相关
