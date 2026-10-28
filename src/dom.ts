@@ -13,4 +13,8 @@ export const dom = {
   favBack: document.getElementById('favBack')!,
   favForm: document.getElementById('favForm') as HTMLFormElement,
   favAlias: document.getElementById('favAlias') as HTMLInputElement,
+  groupBack: document.getElementById('groupBack')!,
+  groupForm: document.getElementById('groupForm') as HTMLFormElement,
+  groupInput: document.getElementById('groupInput') as HTMLInputElement,
+  groupTitle: document.getElementById('groupTitle')!,
 };

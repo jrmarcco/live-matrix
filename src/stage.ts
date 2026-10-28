@@ -220,7 +220,7 @@ export function updateFavStates(): void {
     const btn = el.querySelector<HTMLElement>('.cell-fav');
     if (!btn) return;
     const c = state.cells.find((x) => x.id === Number(el.dataset.id));
-    const saved = !!c && state.favorites.some((f) => f.url === c.url);
+    const saved = !!c && state.favorites.some((f) => f.kind === 'item' && f.url === c.url);
     btn.classList.toggle('on', saved);
     btn.title = saved ? '已收藏，点击修改别名' : '收藏此直播';
   });

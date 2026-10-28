@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
-  Favorite,
+  FavEntry,
+  FavoritesReorderRequest,
   FavoritesUpdateEvent,
   FavoriteSaveRequest,
   InitPayload,
@@ -48,12 +49,17 @@ const api = {
     ipcRenderer.on('win:maximized', (_e, v) => cb(v));
   },
 
-  /** 收藏夹（跨启动持久化） */
-  getFavorites: () => ipcRenderer.invoke('favorites:get') as Promise<Favorite[]>,
+  /** 收藏夹（分组 + 收藏项平级混排，跨启动持久化） */
+  getFavoriteEntries: () => ipcRenderer.invoke('favorites:get') as Promise<FavEntry[]>,
   saveFavorite: (f: FavoriteSaveRequest) => void ipcRenderer.send('favorites:save', f),
   removeFavorite: (url: string) => void ipcRenderer.send('favorites:remove', url),
-  /** 拖动排序后按 url 顺序全量上报，主进程重排并持久化 */
-  reorderFavorites: (urls: string[]) => void ipcRenderer.send('favorites:reorder', urls),
+  /** 拖拽排序后按界面顺序全量上报（含移入分组的归属），主进程重排并持久化 */
+  reorderFavorites: (entries: FavoritesReorderRequest) => void ipcRenderer.send('favorites:reorder', entries),
+  createGroup: (name: string) => void ipcRenderer.send('favorites:group-create', name),
+  renameGroup: (id: string, name: string) => void ipcRenderer.send('favorites:group-rename', { id, name }),
+  /** 删除分组（级联删除组内收藏项） */
+  deleteGroup: (id: string) => void ipcRenderer.send('favorites:group-delete', { id }),
+  toggleGroup: (id: string, collapsed: boolean) => void ipcRenderer.send('favorites:group-toggle', { id, collapsed }),
   onFavoritesUpdate: (cb: (v: FavoritesUpdateEvent) => void) => {
     ipcRenderer.on('favorites:update', (_e, v) => cb(v));
   },

@@ -70,9 +70,9 @@ window.lm.onStreamFavorite((v) => {
   const c = state.cells.find((x) => x.id === v.id);
   if (c && c.kind !== 'pending') openFavModal(c);
 });
-// 收藏列表变更（保存/移除后主进程推送全量）
+// 收藏列表变更（保存/移除/分组操作后主进程推送全量）
 window.lm.onFavoritesUpdate((v) => {
-  state.favorites = v.items;
+  state.favorites = v.entries;
   renderFavList();
   updateFavStates();
 });
