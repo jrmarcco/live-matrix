@@ -171,3 +171,80 @@ describe('favorites-store：分组', () => {
     expect(store.getFavoriteEntries().filter((e) => e.kind === 'item')).toHaveLength(3);
   });
 });
+
+describe('favorites-store：导入（合并式）', () => {
+  it('v2 文件：新增分组与项、重复 url 跳过、归属正确映射并持久化', async () => {
+    const store = await loadStore();
+    store.saveFavorite({ url: 'https://live.bilibili.com/1', platform: 'bilibili', alias: '本地已有' });
+
+    const r = store.importFavorites({
+      version: 2,
+      entries: [
+        { kind: 'group', id: 'g-imp1', name: '导入组', collapsed: false },
+        { kind: 'item', url: 'https://live.bilibili.com/1', platform: 'bilibili', alias: '远端改名' },
+        { kind: 'item', url: 'https://live.douyin.com/2', platform: 'douyin', alias: '远端新项', groupId: 'g-imp1' },
+      ],
+    });
+    expect(r).toEqual({ ok: true, addedItems: 1, addedGroups: 1, skipped: 1 });
+    // 重复项保留本地别名，不被远端覆盖
+    expect(aliases(store)).toEqual(['本地已有', '远端新项']);
+    const imported = store
+      .getFavoriteEntries()
+      .find((e): e is Favorite => e.kind === 'item' && e.url === 'https://live.douyin.com/2');
+    expect(imported?.groupId).toBe('g-imp1');
+    // 持久化可读回
+    const reopened = await loadStore();
+    expect(reopened.getFavoriteEntries()).toHaveLength(3);
+  });
+
+  it('同名分组并入现有分组（成员归属重映射），不重复建组', async () => {
+    const store = await loadStore();
+    store.createGroup('常看');
+    const localGid = (store.getFavoriteEntries().find((e) => e.kind === 'group') as { id: string }).id;
+
+    const r = store.importFavorites({
+      version: 2,
+      entries: [
+        { kind: 'group', id: 'g-other', name: '常看', collapsed: true },
+        { kind: 'item', url: 'https://live.bilibili.com/9', platform: 'bilibili', alias: '并入项', groupId: 'g-other' },
+      ],
+    });
+    expect(r).toEqual({ ok: true, addedItems: 1, addedGroups: 0, skipped: 0 });
+    expect(store.getFavoriteEntries().filter((e) => e.kind === 'group')).toHaveLength(1);
+    const moved = store
+      .getFavoriteEntries()
+      .find((e): e is Favorite => e.kind === 'item' && e.url === 'https://live.bilibili.com/9');
+    expect(moved?.groupId).toBe(localGid);
+  });
+
+  it('归属指向双方都不存在的分组 → 剥离为顶层未分组', async () => {
+    const store = await loadStore();
+    store.importFavorites({
+      version: 2,
+      entries: [
+        { kind: 'item', url: 'https://live.bilibili.com/7', platform: 'bilibili', alias: '孤儿', groupId: 'g-ghost' },
+      ],
+    });
+    const item = store.getFavoriteEntries().find((e): e is Favorite => e.kind === 'item');
+    expect(item?.groupId).toBeUndefined();
+  });
+
+  it('v1 旧格式文件（items 数组）可导入', async () => {
+    const store = await loadStore();
+    const r = store.importFavorites({
+      version: 1,
+      items: [{ url: 'https://live.douyin.com/5', platform: 'douyin', alias: '旧格式项' }],
+    });
+    expect(r).toEqual({ ok: true, addedItems: 1, addedGroups: 0, skipped: 0 });
+    expect(aliases(store)).toEqual(['旧格式项']);
+  });
+
+  it('无法识别的内容返回 badfile，不改动数据', async () => {
+    const store = await loadStore();
+    store.saveFavorite({ url: 'https://live.bilibili.com/1', platform: 'bilibili', alias: 'A' });
+    expect(store.importFavorites(null)).toEqual({ ok: false, reason: 'badfile' });
+    expect(store.importFavorites({ hello: 1 })).toEqual({ ok: false, reason: 'badfile' });
+    expect(store.importFavorites('not json object' as unknown)).toEqual({ ok: false, reason: 'badfile' });
+    expect(store.getFavoriteEntries()).toHaveLength(1);
+  });
+});

@@ -1,15 +1,18 @@
-import { ipcMain } from 'electron';
-import type { FavoriteSaveRequest, FavoritesReorderRequest } from '../../src/shared/types/ipc';
+import { dialog, ipcMain } from 'electron';
+import type { FavoriteSaveRequest, FavoritesImportResult, FavoritesReorderRequest } from '../../src/shared/types/ipc';
+import { readJsonFile, writeJsonFile } from '../../src/shared/lib/json-file';
 import {
   createGroup,
   deleteGroup,
   getFavoriteEntries,
+  importFavorites,
   removeFavorite,
   renameGroup,
   reorderFavorites,
   saveFavorite,
   setGroupCollapsed,
 } from '../services/favorites-store';
+import { getWin } from '../windows';
 
 /* ---------------- 收藏夹（业务规则在 services/favorites-store，此处只做形状校验） ---------------- */
 
@@ -76,5 +79,32 @@ export function registerFavoritesIpc(): void {
     const x = v as { id?: unknown; collapsed?: unknown };
     if (!x || typeof x.id !== 'string' || typeof x.collapsed !== 'boolean') return;
     setGroupCollapsed(x.id, x.collapsed);
+  });
+
+  // 导出收藏到 JSON 文件（原生保存对话框）；返回写入路径，取消返回 null
+  ipcMain.handle('favorites:export', async (): Promise<string | null> => {
+    const win = getWin();
+    if (!win) return null;
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: '导出收藏夹',
+      defaultPath: 'livematrix-favorites.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    });
+    if (canceled || !filePath) return null;
+    writeJsonFile(filePath, { version: 2, exportedAt: new Date().toISOString(), entries: getFavoriteEntries() });
+    return filePath;
+  });
+
+  // 从 JSON 文件合并式导入（原生打开对话框）；取消/格式不识别经 FavoritesImportResult 区分
+  ipcMain.handle('favorites:import', async (): Promise<FavoritesImportResult> => {
+    const win = getWin();
+    if (!win) return { ok: false, reason: 'canceled' };
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+      title: '导入收藏夹',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+    if (canceled || !filePaths?.[0]) return { ok: false, reason: 'canceled' };
+    return importFavorites(readJsonFile<unknown>(filePaths[0]));
   });
 }

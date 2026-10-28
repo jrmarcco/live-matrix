@@ -51,7 +51,7 @@ electron/                   # 主进程（tsc 编译为 CJS，入口 dist/electr
 ├── services/
 │   ├── slot-registry.ts    # 三类槽位（内嵌视图/直连视频/未开播）唯一状态源 + 增删改查/布局落位
 │   ├── stream-resolver.ts  # 平台解析策略注册表（新增平台在此登记，调用方无平台分支）
-│   ├── favorites-store.ts  # 收藏 CRUD（去重/截断/全量重排）+ 分组（建/改名/级联删/收起）+ 持久化（favorites.json v2，v1 自动迁移）
+│   ├── favorites-store.ts  # 收藏 CRUD（去重/截断/全量重排）+ 分组（建/改名/级联删/收起）+ 合并式导入导出 + 持久化（favorites.json v2，v1 自动迁移）
 │   └── settings-store.ts   # 音量持久化（防抖落盘 + will-quit 兜底）
 ├── e2e/probe.ts            # 冒烟/E2E 探针（--lm-smoke 触发）
 ├── lib/async.ts            # withTimeout

@@ -134,3 +134,8 @@ export type FavoritesReorderRequest = Array<
 export interface FavoritesUpdateEvent {
   entries: FavEntry[];
 }
+
+/** 收藏导入结果（ok 为 false 时：canceled=用户取消 / badfile=文件格式不识别） */
+export type FavoritesImportResult =
+  | { ok: true; addedItems: number; addedGroups: number; skipped: number }
+  | { ok: false; reason: 'canceled' | 'badfile' };

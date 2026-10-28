@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   FavEntry,
+  FavoritesImportResult,
   FavoritesReorderRequest,
   FavoritesUpdateEvent,
   FavoriteSaveRequest,
@@ -60,6 +61,10 @@ const api = {
   /** 删除分组（级联删除组内收藏项） */
   deleteGroup: (id: string) => void ipcRenderer.send('favorites:group-delete', { id }),
   toggleGroup: (id: string, collapsed: boolean) => void ipcRenderer.send('favorites:group-toggle', { id, collapsed }),
+  /** 导出收藏到 JSON 文件（原生保存对话框）；返回写入路径，取消返回 null */
+  exportFavorites: () => ipcRenderer.invoke('favorites:export') as Promise<string | null>,
+  /** 从 JSON 文件合并式导入（原生打开对话框）；取消/格式不识别经结果区分 */
+  importFavorites: () => ipcRenderer.invoke('favorites:import') as Promise<FavoritesImportResult>,
   onFavoritesUpdate: (cb: (v: FavoritesUpdateEvent) => void) => {
     ipcRenderer.on('favorites:update', (_e, v) => cb(v));
   },

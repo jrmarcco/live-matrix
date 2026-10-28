@@ -6,6 +6,7 @@ import type {
   FavGroup,
   Favorite,
   FavoriteSaveRequest,
+  FavoritesImportResult,
   FavoritesReorderRequest,
 } from '../../src/shared/types/ipc';
 import { readJsonFile, writeJsonFile } from '../../src/shared/lib/json-file';
@@ -185,4 +186,70 @@ export function reorderFavorites(req: FavoritesReorderRequest): void {
   list.splice(0, list.length, ...next);
   saveFavorites();
   pushFavorites();
+}
+
+/**
+ * 合并式导入（不覆盖本地数据）：
+ * - 分组：同 id 或同名 → 并入现有分组（导入项的归属重映射）；全新分组原样新增
+ * - 收藏项：按 url 去重，已存在的跳过保留本地，新项追加到末尾并映射归属
+ * - 归属指向双方都不存在的分组 → 剥离为顶层未分组
+ * 兼容 v2（entries）与 v1（items）两种导出文件；无法识别返回 badfile。
+ */
+export function importFavorites(raw: unknown): FavoritesImportResult {
+  const v = raw as { entries?: unknown[]; items?: unknown[] } | null;
+  if (!v || typeof v !== 'object') return { ok: false, reason: 'badfile' };
+  const source: unknown[] | null = Array.isArray(v.entries)
+    ? v.entries
+    : Array.isArray(v.items)
+      ? v.items.map((it) => Object.assign({}, it, { kind: 'item' }))
+      : null;
+  if (!source) return { ok: false, reason: 'badfile' };
+
+  const imported = source.map(parseEntry).filter((e): e is FavEntry => !!e);
+  const list = getFavoriteEntries();
+  const groupsById = new Map(list.filter((x): x is FavGroup => x.kind === 'group').map((g) => [g.id, g]));
+  const groupsByName = new Map([...groupsById.values()].map((g) => [g.name, g]));
+  const itemUrls = new Set(list.filter((x): x is Favorite => x.kind === 'item').map((x) => x.url));
+  const idRemap = new Map<string, string>();
+  let addedGroups = 0;
+
+  // 先并入分组，保证后续条目归属可解析
+  for (const e of imported) {
+    if (e.kind !== 'group') continue;
+    const byId = groupsById.get(e.id);
+    if (byId) {
+      idRemap.set(e.id, byId.id);
+      continue;
+    }
+    const byName = groupsByName.get(e.name);
+    if (byName) {
+      idRemap.set(e.id, byName.id);
+      continue;
+    }
+    list.push(e);
+    groupsById.set(e.id, e);
+    groupsByName.set(e.name, e);
+    addedGroups++;
+  }
+
+  let addedItems = 0;
+  let skipped = 0;
+  for (const e of imported) {
+    if (e.kind !== 'item') continue;
+    if (itemUrls.has(e.url)) {
+      skipped++;
+      continue;
+    }
+    const mapped = e.groupId
+      ? (idRemap.get(e.groupId) ?? (groupsById.has(e.groupId) ? e.groupId : undefined))
+      : undefined;
+    list.push(mapped ? { ...e, groupId: mapped } : { ...e, groupId: undefined });
+    itemUrls.add(e.url);
+    addedItems++;
+  }
+  if (addedGroups || addedItems) {
+    saveFavorites();
+    pushFavorites();
+  }
+  return { ok: true, addedItems, addedGroups, skipped };
 }
