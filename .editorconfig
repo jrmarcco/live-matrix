@@ -22,7 +22,7 @@ indent_style = tab
 tab_width = 2
 indent_size = 2
 
-[*.{ts,tsx,js,jsx,vue,css}]
+[*.{ts,tsx,js,jsx,mjs,cjs,vue,css}]
 tab_width = 2
 indent_size = 2
 
