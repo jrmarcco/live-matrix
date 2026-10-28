@@ -1,7 +1,7 @@
 import Hls from 'hls.js';
 import mpegts from 'mpegts.js';
-import { ICONS } from '../electron/icon-data';
-import { detectLiveRoom, detectPlatform, PLATFORM_LABEL, PLATFORMS } from '../electron/platforms';
+import { ICONS } from './shared/lib/icons';
+import { detectLiveRoom, detectPlatform, normalizeUrl, PLATFORM_LABEL, PLATFORMS } from './shared/lib/platforms';
 import type {
   Favorite,
   InitPayload,
@@ -11,7 +11,7 @@ import type {
   StreamMedia,
   StreamMediaEvent,
   VolumeState,
-} from '../electron/types';
+} from './shared/types/ipc';
 
 /** 1 主 + 7 副 = 8 个槽位；右侧副窗口网格为 2 列 × 4 行 */
 const MAX_CELLS = 8;
@@ -544,7 +544,8 @@ addForm.addEventListener('submit', (e) => {
       : '无法识别的地址，目前支持 live.bilibili.com 与 live.douyin.com 直播间';
     return;
   }
-  const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  const normalized = normalizeUrl(raw);
+  if (!normalized) return; // detectLiveRoom 已通过，仅防御
   // 立即关闭对话框，加载过程由占位格上的遮罩反馈（问题1）
   closeModal();
   beginAddStream(normalized, p, () => {
@@ -602,7 +603,7 @@ function renderFavList(): void {
     item.className = 'fav-item';
     item.draggable = true;
     item.dataset.url = f.url;
-    const tag = f.platform === 'bilibili' ? 'B站' : '抖音';
+    const tag = PLATFORM_LABEL[f.platform];
     item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><img class="tag" src="${CHIP_ICON[f.platform]}" alt="${tag}" title="${tag}" draggable="false" /><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
     (item.querySelector('.alias') as HTMLElement).textContent = f.alias;
     item.title = `点击添加：${tag} · ${f.alias}（拖动可调整顺序）`;

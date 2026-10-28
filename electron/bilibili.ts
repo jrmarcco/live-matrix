@@ -1,6 +1,6 @@
 import type { Session } from 'electron';
 import { OfflineError } from './types';
-import type { StreamMedia } from './types';
+import type { StreamMedia } from '../src/shared/types/ipc';
 
 /**
  * 哔哩哔哩直播流直连解析（第一阶段：绕开直播页，自研播放器播放）。

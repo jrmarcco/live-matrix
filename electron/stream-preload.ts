@@ -1,5 +1,5 @@
 import { ipcRenderer } from 'electron';
-import { ICONS } from './icon-data';
+import { ICONS } from '../src/shared/lib/icons';
 
 /**
  * 注入到每个内嵌直播视图的 preload（隔离世界，先于页面脚本注册）。

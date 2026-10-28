@@ -12,8 +12,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "sourceMap": false,
-    "rootDir": "electron",
-    "outDir": "dist/electron"
+    "rootDir": ".",
+    "outDir": "dist"
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*", "src/shared/**/*"]
 }

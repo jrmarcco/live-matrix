@@ -1,4 +1,4 @@
-import type { Platform } from './types';
+import type { Platform } from '../types/ipc';
 
 export const PLATFORMS: Platform[] = ['bilibili', 'douyin'];
 

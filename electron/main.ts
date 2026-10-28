@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { resolveBiliLive } from './bilibili';
 import { sniffDouyinLive } from './douyin';
 import { attachEnhancer } from './enhance';
-import { LOGIN_URL, detectLiveRoom, partitionFor, PLATFORM_LABEL, PLATFORMS } from './platforms';
+import { LOGIN_URL, detectLiveRoom, partitionFor, PLATFORM_LABEL, PLATFORMS } from '../src/shared/lib/platforms';
 import { OfflineError } from './types';
 import type {
   Favorite,
@@ -18,7 +18,7 @@ import type {
   StreamMedia,
   ViewRect,
   VolumeState,
-} from './types';
+} from '../src/shared/types/ipc';
 
 /** 1 个主窗口槽位 + 最多 7 个副窗口槽位 */
 const MAX_STREAMS = 8;

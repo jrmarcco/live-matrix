@@ -15,7 +15,7 @@ import type {
   StreamSlot,
   StreamTitleEvent,
   VolumeState,
-} from './types';
+} from '../src/shared/types/ipc';
 
 const api = {
   /** 渲染层就绪，请求初始状态（登录状态） */

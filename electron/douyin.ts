@@ -1,7 +1,7 @@
 import { WebContentsView } from 'electron';
 import type { BrowserWindow, Session } from 'electron';
 import { OfflineError } from './types';
-import type { StreamMedia } from './types';
+import type { StreamMedia } from '../src/shared/types/ipc';
 
 /**
  * 抖音直播流直连解析（第二阶段：页面代签 + 响应捕获）。
