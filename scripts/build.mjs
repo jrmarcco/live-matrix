@@ -7,7 +7,7 @@
  * 这里在 Windows 上把 TMP/TEMP 重定向到项目内目录规避；macOS/Linux 不受影响。
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +20,10 @@ if (process.platform === 'win32') {
   env.TMP = tmp;
   env.TEMP = tmp;
 }
+
+// tsc 不清理 outDir：先清掉 dist/electron，防止模块移动/删除后留下 stale 产物被打进安装包
+// （dist/renderer 由 vite 全量覆盖，无需清理）
+rmSync(path.join(root, 'dist', 'electron'), { recursive: true, force: true });
 
 const steps = [
   ['typescript/bin/tsc', ['-p', 'tsconfig.electron.json']],
