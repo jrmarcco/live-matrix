@@ -1,0 +1,11 @@
+dist
+release
+node_modules
+.vite-tmp
+build
+coverage
+pnpm-lock.yaml
+*.md
+# 生成文件（scripts/embed-icons.mjs 产出）
+electron/icon-data.ts
+src/shared/lib/icons.ts

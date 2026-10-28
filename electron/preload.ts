@@ -15,7 +15,7 @@ import type {
   StreamSlot,
   StreamTitleEvent,
   VolumeState,
-} from './types';
+} from '../src/shared/types/ipc';
 
 const api = {
   /** 渲染层就绪，请求初始状态（登录状态） */
@@ -31,8 +31,7 @@ const api = {
   updateLayout: (items: LayoutItem[]) => void ipcRenderer.send('layout:update', items),
 
   /** 主窗口音量（0..1 + 静音）：主进程持久化，主槽位为内嵌页时转发给页内控件 */
-  setVolume: (volume: number, muted: boolean) =>
-    void ipcRenderer.send('volume:set', volume, muted),
+  setVolume: (volume: number, muted: boolean) => void ipcRenderer.send('volume:set', volume, muted),
   /** 内嵌页内音量控件发起的变更（回推 UI 层保持两边控件一致） */
   onVolumeChanged: (cb: (v: VolumeState) => void) => {
     ipcRenderer.on('volume:changed', (_e, v) => cb(v));

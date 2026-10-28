@@ -1,5 +1,5 @@
 /**
- * 把 build/ 下的按钮图标内嵌为 data URL（electron/icon-data.ts）。
+ * 把 build/ 下的按钮图标内嵌为 data URL（src/shared/lib/icons.ts）。
  * UI 层（经 vite）与内嵌页注入层（stream-preload，无打包器）共用同一份数据，
  * 避免 stream-preload 在运行时读文件（打包产物不含 build/）以及站点 CSP 限制。
  * 图标更新后重新运行：pnpm run icons:embed
@@ -32,6 +32,6 @@ export const ICONS = {
 ${lines.join('\n')}
 } as const;
 `;
-const target = path.join(root, 'electron', 'icon-data.ts');
+const target = path.join(root, 'src', 'shared', 'lib', 'icons.ts');
 fs.writeFileSync(target, out, 'utf8');
 console.log(`[embed-icons] ${Object.keys(MAP).length} 个图标 → ${path.relative(root, target)}`);

@@ -1,0 +1,16 @@
+/** index.html 静态骨架中的共享 DOM 引用（模块加载时解析一次；动态格子由 stage 模块生成） */
+export const dom = {
+  stage: document.getElementById('stage')!,
+  loginChips: document.getElementById('loginChips')!,
+  winMaxBtn: document.getElementById('winMax') as HTMLButtonElement,
+  modalBack: document.getElementById('modalBack')!,
+  addForm: document.getElementById('addForm') as HTMLFormElement,
+  urlInput: document.getElementById('urlInput') as HTMLInputElement,
+  platHint: document.getElementById('platHint')!,
+  addErr: document.getElementById('addErr')!,
+  favWrap: document.getElementById('favWrap')!,
+  favList: document.getElementById('favList')!,
+  favBack: document.getElementById('favBack')!,
+  favForm: document.getElementById('favForm') as HTMLFormElement,
+  favAlias: document.getElementById('favAlias') as HTMLInputElement,
+};

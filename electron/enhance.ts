@@ -1,4 +1,4 @@
-import type { Platform } from './types';
+import type { Platform } from '../src/shared/types/ipc';
 import type { WebContents } from 'electron';
 
 /**
