@@ -11,15 +11,18 @@ import { MAX_CELLS, state, type Cell } from './state';
 /** 工具栏「收藏」按钮：星形图标（米白原图，不反色）+ 文字 */
 document.getElementById('favBtn')!.innerHTML = `<img src="${ICONS.star}" alt="" draggable="false" />收藏`;
 
+/** 面板头部按钮图标（build/ 下 PNG 内嵌 data URL，黑色图形由 CSS 反色为白） */
+const headIcon = (icon: string): string => `<img src="${icon}" alt="" draggable="false" />`;
+document.getElementById('favGroupAdd')!.innerHTML = headIcon(ICONS.folder);
+document.getElementById('favImport')!.innerHTML = headIcon(ICONS.import);
+document.getElementById('favExport')!.innerHTML = headIcon(ICONS.export);
+document.getElementById('favClose')!.innerHTML = headIcon(ICONS.close);
+
 function favItems(): Favorite[] {
   return state.favorites.filter((e): e is Favorite => e.kind === 'item');
 }
 
-/* 面板按钮图标（与工具栏一致的线性 SVG，fill 跟随 currentColor） */
-const SVG_CLOSE =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>';
-const SVG_PENCIL =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>';
+/* 分组展开箭头（收起朝右，展开旋转朝下） */
 const SVG_CHEVRON =
   '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z" /></svg>';
 
@@ -126,7 +129,7 @@ function makeItemRow(f: Favorite, groupId: string | undefined): HTMLElement {
   // 归属分组随拖放落点更新（persist 时直接读取），渲染时为当前归属
   item.dataset.gid = groupId ?? '';
   const tag = PLATFORM_LABEL[f.platform];
-  item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><img class="tag" src="${CHIP_ICON[f.platform]}" alt="${tag}" title="${tag}" draggable="false" /><span class="alias"></span><span class="fav-del" title="移除收藏">${SVG_CLOSE}</span>`;
+  item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><img class="tag" src="${CHIP_ICON[f.platform]}" alt="${tag}" title="${tag}" draggable="false" /><span class="alias"></span><span class="fav-del" title="移除收藏"><img src="${ICONS.close}" alt="" draggable="false" /></span>`;
   (item.querySelector('.alias') as HTMLElement).textContent = f.alias;
   item.title = `点击添加：${tag} · ${f.alias}（拖动可调整顺序，拖到分组行可移入分组）`;
   item.addEventListener('click', (e) => {
@@ -164,8 +167,8 @@ function makeGroupRow(g: FavGroup): HTMLElement {
     <span class="chev">${SVG_CHEVRON}</span>
     <span class="gname"></span>
     <span class="gcount">${count}</span>
-    <button class="g-op g-rename" type="button" title="重命名分组">${SVG_PENCIL}</button>
-    <button class="g-op g-del" type="button" title="删除分组（连同其中收藏）">${SVG_CLOSE}</button>`;
+    <button class="g-op g-rename" type="button" title="重命名分组"><img src="${ICONS.edit}" alt="" draggable="false" /></button>
+    <button class="g-op g-del" type="button" title="删除分组（连同其中收藏）"><img src="${ICONS.delete}" alt="" draggable="false" /></button>`;
   (row.querySelector('.gname') as HTMLElement).textContent = g.name;
   // 点击分组行（非按钮）：展开/收起
   row.addEventListener('click', (e) => {
