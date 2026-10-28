@@ -704,8 +704,9 @@ button {
   pointer-events: none;
 }
 
-/* 黑色图标反色为白（与格子按钮同一约定）；彩色图标（edit 橙黄 / delete 红）原色显示，同金色星标不反色的惯例 */
+/* 黑色图标（透明底）反色为白，与格子按钮同一约定；金色星标等彩色原图不在此列 */
 .fav-head button img,
+.fav-group .g-op img,
 .fav-item .fav-del img {
   filter: invert(1);
 }
@@ -869,8 +870,12 @@ button {
   height: 22px;
   display: grid;
   place-items: center;
+  padding: 0;
+  border: none;
   border-radius: 5px;
+  background: transparent;
   color: var(--dim);
+  cursor: pointer;
 }
 
 .fav-group .g-op img,
