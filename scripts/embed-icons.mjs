@@ -18,6 +18,8 @@ const MAP = {
   tiktok: 'tiktok-light.png',
   star: 'star.png',
   folder: 'folder.png',
+  folderClose: 'folder-close.png',
+  folderOpen: 'folder-open.png',
   import: 'import.png',
   export: 'export.png',
   edit: 'edit.png',
