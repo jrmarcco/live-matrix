@@ -15,6 +15,14 @@ function favItems(): Favorite[] {
   return state.favorites.filter((e): e is Favorite => e.kind === 'item');
 }
 
+/* 面板按钮图标（与工具栏一致的线性 SVG，fill 跟随 currentColor） */
+const SVG_CLOSE =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>';
+const SVG_PENCIL =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" /></svg>';
+const SVG_CHEVRON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z" /></svg>';
+
 /* ---------------- 分组名输入弹窗（新建/重命名共用） ---------------- */
 
 let groupDialog: { type: 'create' } | { type: 'rename'; id: string; oldName: string } | null = null;
@@ -75,6 +83,31 @@ document.getElementById('favShade')!.addEventListener('click', closeFavPanel);
 // 新建分组：弹出分组名输入框
 document.getElementById('favGroupAdd')!.addEventListener('click', () => openGroupDialog({ type: 'create' }));
 
+// 导入收藏（合并式：重复项跳过，同名分组并入现有分组）
+document.getElementById('favImport')!.addEventListener(
+  'click',
+  () =>
+    void window.lm.importFavorites().then((r) => {
+      if (!r.ok) {
+        if (r.reason === 'badfile') window.alert('无法识别该文件：请选择 LiveMatrix 导出的收藏文件（JSON）');
+        return;
+      }
+      window.alert(
+        `导入完成：新增 ${r.addedItems} 项收藏、${r.addedGroups} 个分组` +
+          (r.skipped ? `，跳过重复 ${r.skipped} 项` : ''),
+      );
+    }),
+);
+
+// 导出收藏（含分组结构与归属）
+document.getElementById('favExport')!.addEventListener(
+  'click',
+  () =>
+    void window.lm.exportFavorites().then((p) => {
+      if (p) window.alert(`已导出 ${favItems().length} 项收藏（含分组）到：\n${p}`);
+    }),
+);
+
 /* ---------------- 渲染 ---------------- */
 
 /** 正在拖动的收藏项 url / 分组 id（null = 未拖动） */
@@ -93,7 +126,7 @@ function makeItemRow(f: Favorite, groupId: string | undefined): HTMLElement {
   // 归属分组随拖放落点更新（persist 时直接读取），渲染时为当前归属
   item.dataset.gid = groupId ?? '';
   const tag = PLATFORM_LABEL[f.platform];
-  item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><img class="tag" src="${CHIP_ICON[f.platform]}" alt="${tag}" title="${tag}" draggable="false" /><span class="alias"></span><span class="fav-del" title="移除收藏">×</span>`;
+  item.innerHTML = `<span class="fav-grip" title="拖动调整顺序">⠿</span><img class="tag" src="${CHIP_ICON[f.platform]}" alt="${tag}" title="${tag}" draggable="false" /><span class="alias"></span><span class="fav-del" title="移除收藏">${SVG_CLOSE}</span>`;
   (item.querySelector('.alias') as HTMLElement).textContent = f.alias;
   item.title = `点击添加：${tag} · ${f.alias}（拖动可调整顺序，拖到分组行可移入分组）`;
   item.addEventListener('click', (e) => {
@@ -128,11 +161,11 @@ function makeGroupRow(g: FavGroup): HTMLElement {
   row.title = '点击展开/收起分组；拖动可调整分组顺序';
   row.innerHTML = `
     <span class="fav-grip" title="拖动调整顺序">⠿</span>
-    <span class="chev">▶</span>
+    <span class="chev">${SVG_CHEVRON}</span>
     <span class="gname"></span>
     <span class="gcount">${count}</span>
-    <button class="g-op g-rename" type="button" title="重命名分组">✎</button>
-    <button class="g-op g-del" type="button" title="删除分组（连同其中收藏）">×</button>`;
+    <button class="g-op g-rename" type="button" title="重命名分组">${SVG_PENCIL}</button>
+    <button class="g-op g-del" type="button" title="删除分组（连同其中收藏）">${SVG_CLOSE}</button>`;
   (row.querySelector('.gname') as HTMLElement).textContent = g.name;
   // 点击分组行（非按钮）：展开/收起
   row.addEventListener('click', (e) => {

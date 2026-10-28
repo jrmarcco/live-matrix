@@ -688,12 +688,18 @@ button {
 .fav-head button {
   width: 28px;
   height: 28px;
+  display: grid;
+  place-items: center;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--dim);
-  font-size: 16px;
   cursor: pointer;
+}
+
+.fav-head button svg {
+  width: 15px;
+  height: 15px;
 }
 
 .fav-head button:hover {
@@ -818,8 +824,9 @@ button {
 /* 展开箭头：收起时朝右，展开时旋转朝下 */
 .fav-group .chev {
   flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
   color: var(--dim);
-  font-size: 11px;
   transition: transform 0.15s ease;
 }
 
@@ -856,7 +863,12 @@ button {
   place-items: center;
   border-radius: 5px;
   color: var(--dim);
-  font-size: 13px;
+}
+
+.fav-group .g-op svg,
+.fav-item .fav-del svg {
+  width: 13px;
+  height: 13px;
 }
 
 .fav-group .g-op:hover {
