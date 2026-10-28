@@ -64,15 +64,37 @@
       </form>
     </div>
 
+    <div id="groupBack" class="modal-back hidden">
+      <form id="groupForm" class="modal">
+        <h3 id="groupTitle">新建分组</h3>
+        <label for="groupInput">分组名称</label>
+        <input
+          id="groupInput"
+          type="text"
+          spellcheck="false"
+          autocomplete="off"
+          maxlength="40"
+          placeholder="例如：常看主播"
+        />
+        <div class="row">
+          <button type="button" id="groupCancel" class="ghost">取消</button>
+          <button type="submit" class="primary">保存</button>
+        </div>
+      </form>
+    </div>
+
     <div id="favWrap" class="fav-wrap hidden">
       <div id="favShade" class="fav-shade"></div>
       <aside id="favPanel" class="fav-panel">
         <div class="fav-head">
           <b>收藏夹</b>
-          <button id="favClose" type="button" title="收起">×</button>
+          <div class="fav-head-ops">
+            <button id="favGroupAdd" type="button" title="新建分组">＋</button>
+            <button id="favClose" type="button" title="收起">×</button>
+          </div>
         </div>
         <div id="favList" class="fav-list"></div>
-        <div class="fav-tip">点击列表项即可添加到窗口 按住条目拖动可调整顺序</div>
+        <div class="fav-tip">点击条目添加到窗口 · 拖动排序 · 拖到分组行可移入分组</div>
       </aside>
     </div>
 

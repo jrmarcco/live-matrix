@@ -97,17 +97,40 @@ export interface StreamMediaEvent {
   media: StreamMedia;
 }
 
-/** 收藏的直播间（userData/favorites.json，跨启动保留） */
+/** 收藏分组（与收藏项在收藏列表中平级混排；收起状态跨启动保留） */
+export interface FavGroup {
+  kind: 'group';
+  id: string;
+  name: string;
+  collapsed: boolean;
+}
+
+/** 收藏的直播间（userData/favorites.json v2，跨启动保留） */
 export interface Favorite {
+  kind: 'item';
+  url: string;
+  platform: Platform;
+  alias: string;
+  /** 所属分组 id（缺省为未分组的平级项） */
+  groupId?: string;
+}
+
+/** 收藏列表条目：分组与收藏项平级混排在同一有序数组中 */
+export type FavEntry = FavGroup | Favorite;
+
+/** 收藏保存请求（按 url 去重，存在即改名；不改变已有条目的分组归属） */
+export interface FavoriteSaveRequest {
   url: string;
   platform: Platform;
   alias: string;
 }
 
-/** 收藏保存请求（按 url 去重，存在即改名）；字段与 Favorite 完全相同 */
-export type FavoriteSaveRequest = Favorite;
+/** 拖拽排序后的全量顺序上报：按界面顺序列出分组与收藏项，item 的 groupId 为拖放后的归属分组 */
+export type FavoritesReorderRequest = Array<
+  { kind: 'group'; id: string } | { kind: 'item'; url: string; groupId?: string }
+>;
 
 /** 收藏列表全量更新事件 */
 export interface FavoritesUpdateEvent {
-  items: Favorite[];
+  entries: FavEntry[];
 }

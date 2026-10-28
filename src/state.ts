@@ -1,4 +1,4 @@
-import type { Favorite, Platform, StreamMedia } from './shared/types/ipc';
+import type { FavEntry, Platform, StreamMedia } from './shared/types/ipc';
 
 /** 1 主 + 7 副 = 8 个槽位；右侧副窗口网格为 2 列 × 4 行 */
 export const MAX_CELLS = 8;
@@ -36,5 +36,5 @@ export const state = {
   /** 主窗口音量（0..1 + 静音）：主进程持久化，内嵌页控件变更时经 volume:changed 回推 */
   mainVolume: 1,
   mainMuted: false,
-  favorites: [] as Favorite[],
+  favorites: [] as FavEntry[],
 };

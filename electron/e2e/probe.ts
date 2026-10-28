@@ -76,9 +76,9 @@ export const E2E_PROBE_SCRIPT = `(async () => {
     out.focusOff = !document.getElementById('stage').classList.contains('focus');
     out.orderAfterAll = cellIds();
   }
-  // E2E 直接跑在真实用户数据上：先快照收藏夹，结束后完整还原
+  // E2E 直接跑在真实用户数据上：先快照收藏夹（含分组），结束后完整还原
   // （收藏测试按 url 去重保存，可能覆盖用户已有条目的别名）
-  const favSnapshot = await window.lm.getFavorites();
+  const favSnapshot = await window.lm.getFavoriteEntries();
   // 收藏流程：星标 → 输入别名 → 面板列表 → 点击添加
   const favBtnCell = document.querySelector('.cell[data-id] .cell-fav');
   if (favBtnCell) {
@@ -91,7 +91,7 @@ export const E2E_PROBE_SCRIPT = `(async () => {
     await new Promise((res) => setTimeout(res, 500));
     // 记录本次写入的条目，测试末尾按 url 移除（save 按 url 去重，
     // 可能覆盖同名旧条目，按 url 删除才准确）
-    out.favSavedUrl = (await window.lm.getFavorites()).find((f) => f.alias === 'E2E收藏')?.url ?? null;
+    out.favSavedUrl = (await window.lm.getFavoriteEntries()).find((f) => f.kind === 'item' && f.alias === 'E2E收藏')?.url ?? null;
     document.getElementById('favBtn').click();
     await new Promise((res) => setTimeout(res, 300));
     out.favPanelShown = !document.getElementById('favWrap').classList.contains('hidden');
@@ -116,7 +116,7 @@ export const E2E_PROBE_SCRIPT = `(async () => {
     { url: 'https://live.bilibili.com/9002', platform: 'bilibili', alias: '拖拽B' },
     { url: 'https://live.douyin.com/9003', platform: 'douyin', alias: '拖拽C' },
   ];
-  for (const saved of await window.lm.getFavorites()) {
+  for (const saved of (await window.lm.getFavoriteEntries()).filter((e) => e.kind === 'item')) {
     if (dragFavs.some((d) => d.url === saved.url)) window.lm.removeFavorite(saved.url);
   }
   await new Promise((res) => setTimeout(res, 250));
@@ -137,10 +137,50 @@ export const E2E_PROBE_SCRIPT = `(async () => {
   itemA.dispatchEvent(new DragEvent('dragend', { bubbles: true, dataTransfer: dt }));
   await new Promise((res) => setTimeout(res, 400));
   out.favOrderAfterDrag = sub3(favAliases());
-  out.favOrderPersisted = sub3((await window.lm.getFavorites()).map((f) => f.alias));
+  out.favOrderPersisted = sub3(
+    (await window.lm.getFavoriteEntries()).filter((e) => e.kind === 'item').map((f) => f.alias),
+  );
   for (const f of dragFavs) window.lm.removeFavorite(f.url);
   document.getElementById('favClose').click();
   await new Promise((res) => setTimeout(res, 250));
+  // 分组流程（全部用 E2E 专用数据，自清理）：新建 → 数据层移入 → 收起 → 级联删除
+  window.lm.saveFavorite({ url: 'https://live.bilibili.com/9100', platform: 'bilibili', alias: '分组测试' });
+  await new Promise((res) => setTimeout(res, 300));
+  window.lm.createGroup('E2E分组');
+  await new Promise((res) => setTimeout(res, 300));
+  let entriesNow = await window.lm.getFavoriteEntries();
+  const eg = entriesNow.find((e) => e.kind === 'group' && e.name === 'E2E分组');
+  out.groupCreated = !!eg;
+  if (eg) {
+    window.lm.reorderFavorites(
+      entriesNow.map((e) =>
+        e.kind === 'group'
+          ? { kind: 'group', id: e.id }
+          : e.url === 'https://live.bilibili.com/9100'
+            ? { kind: 'item', url: e.url, groupId: eg.id }
+            : { kind: 'item', url: e.url, ...(e.groupId ? { groupId: e.groupId } : {}) },
+      ),
+    );
+    await new Promise((res) => setTimeout(res, 300));
+    entriesNow = await window.lm.getFavoriteEntries();
+    out.itemMovedIntoGroup = !!entriesNow.find(
+      (e) => e.kind === 'item' && e.url === 'https://live.bilibili.com/9100' && e.groupId === eg.id,
+    );
+    window.lm.toggleGroup(eg.id, true);
+    await new Promise((res) => setTimeout(res, 300));
+    document.getElementById('favBtn').click();
+    await new Promise((res) => setTimeout(res, 250));
+    out.groupRowCollapsed = !!document.querySelector('.fav-group[data-gid="' + eg.id + '"].collapsed');
+    out.groupCollapsedHidesItems = !document.querySelector('.fav-item[data-gid="' + eg.id + '"]');
+    window.lm.deleteGroup(eg.id);
+    await new Promise((res) => setTimeout(res, 300));
+    entriesNow = await window.lm.getFavoriteEntries();
+    out.groupCascadeDeleted = !entriesNow.some(
+      (e) => (e.kind === 'group' && e.id === eg.id) || (e.kind === 'item' && e.groupId === eg.id),
+    );
+    document.getElementById('favClose').click();
+    await new Promise((res) => setTimeout(res, 250));
+  }
   // 直连格右下角刷新按钮：点击后应显示「刷新中…」并触发重新解析
   const vCell = document.querySelector('.cell.kind-video[data-id]');
   const rBtn = vCell ? vCell.querySelector('.cell-refresh') : null;
@@ -167,21 +207,32 @@ export const E2E_PROBE_SCRIPT = `(async () => {
       ? oCell.querySelector('.cell-offline .txt').textContent
       : '已开播升级为直连格';
   }
-  // 还原收藏夹到快照状态：删除 E2E 新增、恢复被测试覆盖的
-  // 别名/条目，并按快照顺序重排（对用户数据零副作用）
-  const favNow = await window.lm.getFavorites();
+  // 还原收藏夹到快照状态：删除 E2E 新增项、恢复被覆盖的别名/条目，
+  // 并按快照顺序与分组归属整体重排（对用户数据零副作用）
+  const favNow = await window.lm.getFavoriteEntries();
   for (const f of favNow) {
-    if (!favSnapshot.some((s) => s.url === f.url)) window.lm.removeFavorite(f.url);
+    if (f.kind === 'item' && !favSnapshot.some((s) => s.kind === 'item' && s.url === f.url)) {
+      window.lm.removeFavorite(f.url);
+    }
   }
   for (const s of favSnapshot) {
-    const c = (await window.lm.getFavorites()).find((f) => f.url === s.url);
-    if (!c || c.alias !== s.alias || c.platform !== s.platform) window.lm.saveFavorite(s);
+    if (s.kind !== 'item') continue;
+    const c = (await window.lm.getFavoriteEntries()).find((f) => f.kind === 'item' && f.url === s.url);
+    if (!c || c.alias !== s.alias || c.platform !== s.platform) {
+      window.lm.saveFavorite({ url: s.url, platform: s.platform, alias: s.alias });
+    }
   }
   await new Promise((res) => setTimeout(res, 250));
-  window.lm.reorderFavorites(favSnapshot.map((s) => s.url));
+  window.lm.reorderFavorites(
+    favSnapshot.map((s) =>
+      s.kind === 'group'
+        ? { kind: 'group', id: s.id }
+        : { kind: 'item', url: s.url, ...(s.groupId ? { groupId: s.groupId } : {}) },
+    ),
+  );
   await new Promise((res) => setTimeout(res, 250));
   out.favoritesRestored =
-    JSON.stringify(await window.lm.getFavorites()) === JSON.stringify(favSnapshot);
+    JSON.stringify(await window.lm.getFavoriteEntries()) === JSON.stringify(favSnapshot);
   return out;
 })()`;
 
