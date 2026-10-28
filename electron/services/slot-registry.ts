@@ -160,6 +160,14 @@ export function refreshStream(id: number): void {
         console.log(`[live-matrix] 直连流已刷新: id=${id} ${media.format}`);
       })
       .catch((err: unknown) => {
+        if (err instanceof OfflineError) {
+          // 主播已下播：直连槽位降级为未开播占位格（与添加时/占位格刷新同一页面）
+          videoSlots.delete(id);
+          offlineSlots.set(id, { url: slot.url, platform: slot.platform });
+          getWin()?.webContents.send('stream:offline', { id });
+          console.log(`[live-matrix] 直播已下播，转未开播占位格: id=${id}`);
+          return;
+        }
         getWin()?.webContents.send('stream:error', { id, message: `刷新直播流失败: ${String(err)}` });
       });
     return;

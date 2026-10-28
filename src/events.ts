@@ -49,6 +49,18 @@ window.lm.onStreamDead((v) => {
   const i = state.cells.findIndex((c) => c.id === v.id);
   if (i >= 0) removeCell(i);
 });
+// 直连格刷新发现主播已下播（含看门狗触发）：降级为统一的未开播占位页，
+// 与添加时未开播/占位格刷新同一页面（先移除视频格 DOM 再 render 重建，播放器随之销毁）
+window.lm.onStreamOffline((v) => {
+  const c = state.cells.find((x) => x.id === v.id);
+  if (!c || c.kind !== 'video') return;
+  c.kind = 'offline';
+  c.media = undefined;
+  c.error = undefined;
+  dom.stage.querySelector(`.cell[data-id="${v.id}"]`)?.remove();
+  render();
+  setOfflineHint(v.id, '已下播');
+});
 // 直连流地址刷新（过期/断线后主进程重新解析下发）；未开播格刷新后探测到
 // 开播也走此事件：格子在位升级为直连格（先赋 media，移除旧 DOM 后 render 重建挂播放器）
 window.lm.onStreamMedia((v: StreamMediaEvent) => {

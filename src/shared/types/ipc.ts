@@ -85,6 +85,9 @@ export interface StreamIdEvent {
 /** 直播流结束（视图销毁后通知渲染层移除格子） */
 export type StreamDeadEvent = StreamIdEvent;
 
+/** 直连格刷新发现主播已下播（主进程已把槽位降级为 offline，渲染层换统一的未开播占位页） */
+export type StreamOfflineEvent = StreamIdEvent;
+
 /** 直播视图内双击（stream-preload 捕获，主进程中继回 UI 层） */
 export type StreamDblClickEvent = StreamIdEvent;
 
