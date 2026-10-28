@@ -830,17 +830,13 @@ button {
   color: var(--dim);
 }
 
-/* 展开箭头：收起时朝右，展开时旋转朝下 */
-.fav-group .chev {
+/* 分组状态图标：收起 folder-close / 展开 folder-open（金黄色原图，不反色） */
+.fav-group .g-folder {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  color: var(--dim);
-  transition: transform 0.15s ease;
-}
-
-.fav-group:not(.collapsed) .chev {
-  transform: rotate(90deg);
+  width: 15px;
+  height: 15px;
+  display: block;
+  pointer-events: none;
 }
 
 .fav-group .gname {

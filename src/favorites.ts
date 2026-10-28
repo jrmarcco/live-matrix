@@ -22,10 +22,6 @@ function favItems(): Favorite[] {
   return state.favorites.filter((e): e is Favorite => e.kind === 'item');
 }
 
-/* 分组展开箭头（收起朝右，展开旋转朝下） */
-const SVG_CHEVRON =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.59 16.59 13.17 12 8.59 7.41 10 6l6 6-6 6z" /></svg>';
-
 /* ---------------- 分组名输入弹窗（新建/重命名共用） ---------------- */
 
 let groupDialog: { type: 'create' } | { type: 'rename'; id: string; oldName: string } | null = null;
@@ -164,7 +160,7 @@ function makeGroupRow(g: FavGroup): HTMLElement {
   row.title = '点击展开/收起分组；拖动可调整分组顺序';
   row.innerHTML = `
     <span class="fav-grip" title="拖动调整顺序">⠿</span>
-    <span class="chev">${SVG_CHEVRON}</span>
+    <img class="g-folder" src="${g.collapsed ? ICONS.folderClose : ICONS.folderOpen}" alt="" draggable="false" />
     <span class="gname"></span>
     <span class="gcount">${count}</span>
     <button class="g-op g-rename" type="button" title="重命名分组"><img src="${ICONS.edit}" alt="" draggable="false" /></button>
