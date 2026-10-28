@@ -190,7 +190,7 @@ export const E2E_PROBE_SCRIPT = `(async () => {
     await new Promise((res) => setTimeout(res, 120));
     out.videoRefreshState = vCell.querySelector('.v-state').textContent;
   }
-  // 未开播格刷新按钮：点击后显示「检测中…」，探测完成回到「仍未开播」
+  // 未开播格刷新按钮：点击后显示「检测中…」，探测完成回到「未开播」
   //（主播已开播时该格会被替换为直连格，原元素从 DOM 脱离）
   const oCell = document.querySelector('.cell.kind-offline[data-id]');
   const oBtn = oCell ? oCell.querySelector('.cell-refresh') : null;
