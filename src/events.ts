@@ -42,7 +42,7 @@ window.lm.onStreamError((v) =>
   updateCellDom(v.id, (c) => {
     c.error = v.message.slice(0, 60);
     if (c.kind === 'offline') setOfflineHint(v.id, c.error || '未开播');
-    // 静默自动恢复中的瞬态失败不显示文案（看门狗会继续重试），避免打扰用户
+    // 静默自动恢复中的瞬态失败不显示文案，避免打扰用户
     else if (!isSilentRecovery(v.id)) setState(v.id, c.error);
   }),
 );
@@ -50,7 +50,7 @@ window.lm.onStreamDead((v) => {
   const i = state.cells.findIndex((c) => c.id === v.id);
   if (i >= 0) removeCell(i);
 });
-// 直连格刷新发现主播已下播（含看门狗触发）：降级为统一的未开播占位页，
+// 直连格刷新发现主播已下播：降级为统一的未开播占位页，
 // 与添加时未开播/占位格刷新同一页面（先移除视频格 DOM 再 render 重建，播放器随之销毁）
 window.lm.onStreamOffline((v) => {
   const c = state.cells.find((x) => x.id === v.id);
@@ -76,7 +76,7 @@ window.lm.onStreamMedia((v: StreamMediaEvent) => {
   }
   c.media = v.media;
   const el = dom.stage.querySelector<HTMLElement>(`.cell[data-id="${v.id}"]`);
-  // 静默恢复：看门狗/播放器错误触发的刷新不显示「载入中…」等过程文案
+  // 静默恢复：播放器错误触发的刷新不显示「载入中…」等过程文案
   const silent = consumeSilentRecovery(v.id);
   if (el) attachPlayer(el, c, silent);
 });

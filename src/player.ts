@@ -3,19 +3,17 @@ import mpegts from 'mpegts.js';
 import { state, type Cell } from './state';
 import { setState } from './stage';
 
-/* ---------------- 直连播放器（hls.js / mpegts.js）：挂载、销毁、断线重排 + 播放看门狗 ---------------- */
+/* ---------------- 直连播放器（hls.js / mpegts.js）：挂载、销毁、断线重排 ---------------- */
 
 interface PlayerHandle {
   destroy: () => void;
-  /** 看门狗检测播放进度用的视频元素引用 */
-  video: HTMLVideoElement;
 }
 
 const players = new Map<number, PlayerHandle>();
 const refreshTimers = new Map<number, number>();
 
 /**
- * 静默自动恢复标记：看门狗/播放器致命错误触发的刷新对用户无感知——
+ * 静默自动恢复标记：播放器致命错误触发的刷新对用户无感知——
  * 全链路（重解析 → stream:media → 重建播放器）不显示任何过程文案，
  * 仅 console 留痕；恢复成功或播放器销毁时清除。
  * 用户手动刷新不走此标记，保留「刷新中…」等可见反馈。
@@ -43,7 +41,6 @@ export function destroyPlayer(id: number): void {
     window.clearTimeout(t);
     refreshTimers.delete(id);
   }
-  watchdog.delete(id);
   silentRecovery.delete(id);
   const p = players.get(id);
   players.delete(id);
@@ -101,7 +98,6 @@ export function attachPlayer(cellEl: HTMLElement, c: Cell, silent = false): void
     player.attachMediaElement(video);
     player.load();
     players.set(c.id, {
-      video,
       destroy: () => {
         try {
           player.pause();
@@ -124,13 +120,12 @@ export function attachPlayer(cellEl: HTMLElement, c: Cell, silent = false): void
       markSilentRecovery(c.id);
       scheduleRefresh(c.id);
     });
-    players.set(c.id, { video, destroy: () => hls.destroy() });
+    players.set(c.id, { destroy: () => hls.destroy() });
   } else {
     // 原生回退：直接给 <video> 赋源
     console.warn('[lm-player] native fallback, format=', c.media.format);
     video.src = c.media.url;
     players.set(c.id, {
-      video,
       destroy: () => {
         video.pause();
         video.removeAttribute('src');
@@ -156,76 +151,3 @@ export function scheduleRefresh(id: number): void {
     }, 3000),
   );
 }
-
-/* ---------------- 播放看门狗 ----------------
- * 播放器自身的 ERROR 事件只覆盖「显式报错」的断线；另一类故障是画面静默卡住
- * （CDN 停止喂数 / 流悄悄断开 / 主播下播停在最后一帧），没有任何错误回调。
- * 看门狗周期检查每个 <video> 的 currentTime 是否仍在推进，停滞足够久或已 ended
- * 时自动走 scheduleRefresh → 主进程重新解析 → stream:media 重建播放器，
- * 全程无需手动点击，且对用户无感知：不显示任何过程文案（仅 console 留痕），
- * 恢复期间画面停在最后一帧，直到新流接上或主播下播转入统一的未开播页。 */
-
-interface WatchEntry {
-  /** 上次检测时的播放位置（<0 表示尚无基线） */
-  lastTime: number;
-  /** 连续未推进的检测次数 */
-  stalledChecks: number;
-  /** 上次自动刷新触发时间（冷却防抖） */
-  lastTrigger: number;
-}
-
-const watchdog = new Map<number, WatchEntry>();
-/** 检测周期 */
-const WATCHDOG_INTERVAL_MS = 4000;
-/** 连续 N 次检测 currentTime 未推进判定卡住；取 2 避免短暂缓冲误报 */
-const STALL_CONFIRM_TICKS = 2;
-/** 同一格子两次自动刷新的最小间隔（也决定主播下播后的重连节奏） */
-const AUTO_REFRESH_COOLDOWN_MS = 30_000;
-
-function triggerAutoRefresh(id: number, entry: WatchEntry, text: string): void {
-  entry.lastTrigger = Date.now();
-  entry.stalledChecks = 0;
-  entry.lastTime = -1; // 丢弃旧基线，等重建后的下一轮重新采样
-  markSilentRecovery(id); // 自动恢复对用户无感知：全链路不显示过程文案
-  scheduleRefresh(id);
-  console.log(`[lm-player] 看门狗自动刷新: id=${id} ${text}`);
-}
-
-window.setInterval(() => {
-  const now = Date.now();
-  for (const [id, p] of players) {
-    const v = p.video;
-    // 尚未装载或处于暂停（如自动播放被拒等待用户点击）的不监测
-    if (!v || v.readyState === 0 || v.paused) {
-      watchdog.delete(id);
-      continue;
-    }
-    let entry = watchdog.get(id);
-    if (!entry) {
-      entry = { lastTime: -1, stalledChecks: 0, lastTrigger: 0 };
-      watchdog.set(id, entry);
-    }
-    if (v.ended) {
-      // 流正常结束（主播下播）：周期自动重连，主播重播后即恢复播放
-      if (now - entry.lastTrigger >= AUTO_REFRESH_COOLDOWN_MS) {
-        triggerAutoRefresh(id, entry, '直播结束，自动重连…');
-      }
-      entry.lastTime = v.currentTime;
-      continue;
-    }
-    if (entry.lastTime >= 0 && v.currentTime - entry.lastTime < 0.3) {
-      entry.stalledChecks++;
-      if (entry.stalledChecks >= STALL_CONFIRM_TICKS && now - entry.lastTrigger >= AUTO_REFRESH_COOLDOWN_MS) {
-        triggerAutoRefresh(id, entry, '画面卡住，自动刷新…');
-        continue;
-      }
-    } else {
-      entry.stalledChecks = 0;
-    }
-    entry.lastTime = v.currentTime;
-  }
-  // 仅删除当前遍历到的键（Map 迭代中删除已访问键是安全的）
-  for (const id of watchdog.keys()) {
-    if (!players.has(id)) watchdog.delete(id);
-  }
-}, WATCHDOG_INTERVAL_MS);
